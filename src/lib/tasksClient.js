@@ -153,7 +153,7 @@ const extractTasksFromPayload = (payload, depth = 0) => {
 
 const buildHeaders = () => ({
     'Content-Type': 'application/json',
-    ...(API_KEY ? { 'x-api-key': API_KEY, 'X-API-KEY': API_KEY } : {}),
+    ...(API_KEY ? { 'X-API-KEY': API_KEY } : {}),
 });
 
 const buildUrl = (query) => {

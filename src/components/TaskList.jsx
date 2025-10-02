@@ -26,39 +26,53 @@ import { CSS } from '@dnd-kit/utilities';
 
 /**
  * Formats a date value into a readable label
- * Handles various date formats and edge cases
+ * Handles various date formats and edge cases from the PHP API
  */
 const formatDateLabel = (value) => {
   if (!value) return '';
   const trimmed = String(value).trim();
+  // Handle the specific "0000-00-00" value from your PHP API
   if (!trimmed || trimmed === '0000-00-00') return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch (error) {
+    console.warn('Error formatting date:', value, error);
+    return '';
+  }
 };
 
 /**
  * Formats a time value into a readable label
- * Handles various time formats and converts to 12-hour format
+ * Handles various time formats from PHP API and converts to 12-hour format
  */
 const formatTimeLabel = (value) => {
   if (!value) return '';
   const trimmed = String(value).trim();
+  // Handle the specific "00:00:00" value from your PHP API
   if (!trimmed || trimmed === '00:00:00' || trimmed === '00:00') return '';
-  const [hours, minutes] = value.split(':');
-  if (hours === undefined || minutes === undefined) return '';
-  const date = new Date();
-  date.setHours(Number(hours), Number(minutes));
-  return date.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
+  
+  try {
+    const [hours, minutes] = value.split(':');
+    if (hours === undefined || minutes === undefined) return '';
+    const date = new Date();
+    date.setHours(Number(hours), Number(minutes));
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch (error) {
+    console.warn('Error formatting time:', value, error);
+    return '';
+  }
 };
 
 /**
@@ -88,6 +102,7 @@ function SortableItem({
 
   // Create drag handle listeners that prevent event bubbling
   const dragHandleListeners = React.useMemo(() => {
+    if (!listeners) return {};
     const { onPointerDown, ...rest } = listeners;
     return {
       ...rest,
@@ -112,22 +127,34 @@ function SortableItem({
     boxShadow: isExpanded ? '0 0 0 2px var(--border-hover)' : 'none',
   }), [transform, transition, isDragging, isExpanded]);
 
-  // Format date and time for display
-  const formattedDate = formatDateLabel(task.date);
-  const formattedTime = task.isFullDay ? '' : formatTimeLabel(task.time);
-  const metaParts = [];
-  if (formattedDate) metaParts.push(formattedDate);
-  if (task.isFullDay) metaParts.push(labels.allDayLabel);
-  else if (formattedTime) metaParts.push(formattedTime);
+  // Format date and time for display with proper handling of API data
+  const formattedDate = React.useMemo(() => formatDateLabel(task.date), [task.date]);
+  const formattedTime = React.useMemo(() => 
+    task.isFullDay ? '' : formatTimeLabel(task.time), [task.time, task.isFullDay]);
+  
+  // Build metadata parts for display
+  const metaParts = React.useMemo(() => {
+    const parts = [];
+    if (formattedDate) parts.push(formattedDate);
+    if (task.isFullDay) parts.push(labels.allDayLabel);
+    else if (formattedTime) parts.push(formattedTime);
+    return parts;
+  }, [formattedDate, formattedTime, task.isFullDay, labels.allDayLabel]);
+  
   const topMetaVisible = metaParts.length > 0;
 
-  // Parse and prepare tags for display
+  // Parse and prepare tags for display with error handling
   const tagList = React.useMemo(() => {
     if (!task.tags) return [];
-    return String(task.tags)
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean);
+    try {
+      return String(task.tags)
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+    } catch (error) {
+      console.warn('Error parsing tags:', task.tags, error);
+      return [];
+    }
   }, [task.tags]);
 
   // Determine priority information for display
@@ -145,9 +172,9 @@ function SortableItem({
   }, [task.priority, labels.priorityTop, labels.priorityMedium, labels.priorityLow]);
 
   /**
-   * Renders the drag handle button
+   * Renders the drag handle button with proper event handling
    */
-  const dragButton = (extraClasses) => (
+  const renderDragButton = React.useCallback((extraClasses) => (
     <button
       type="button"
       className={`flex items-center justify-center p-1 rounded hover:bg-white/10 transition-colors cursor-grab active:cursor-grabbing ${extraClasses}`}
@@ -158,12 +185,12 @@ function SortableItem({
     >
       <GripVertical size={18} />
     </button>
-  );
+  ), [dragHandleListeners, labels.dragTask]);
 
   /**
-   * Renders the action buttons (complete, details, delete)
+   * Renders the action buttons (complete, details, delete) with proper event handling
    */
-  const renderActionButtons = (extraClasses) => (
+  const renderActionButtons = React.useCallback((extraClasses) => (
     <div className={`flex items-center gap-2 ${extraClasses}`}>
       {showCompletedControl && (
         <button
@@ -220,7 +247,7 @@ function SortableItem({
         }}
       />
     </div>
-  );
+  ), [showCompletedControl, task.completed, task.id, originalIndex, isExpanded, labels, onToggleCompleted, onToggleDetails, onRequestDelete]);
 
   // Get the task name from either 'name' or 'title' field (API compatibility)
   const taskDisplayName = task.name || task.title || 'Untitled Task';
@@ -230,7 +257,7 @@ function SortableItem({
       <div className="flex flex-col gap-3">
         {/* Mobile layout - controls on top */}
         <div className="flex items-center justify-between min-[600px]:hidden">
-          {dragButton('')}
+          {renderDragButton('')}
           {renderActionButtons('')}
         </div>
 
@@ -253,7 +280,7 @@ function SortableItem({
 
         {/* Desktop layout - single row */}
         <div className="hidden min-[600px]:flex items-center gap-3 min-w-0">
-          {dragButton('hidden min-[600px]:flex')}
+          {renderDragButton('hidden min-[600px]:flex')}
 
           <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
             {displayIndex + 1}
@@ -270,7 +297,7 @@ function SortableItem({
             />
           </span>
 
-          <div className="flex flex-col gap-1 min-w-0">
+          <div className="flex flex-col gap-1 min-w-0 flex-1">
             <span className="font-medium capitalize truncate" style={{ color: 'var(--text-primary)' }}>
               {taskDisplayName}
             </span>
@@ -372,6 +399,7 @@ function DroppableTasksContainer({ children }) {
 /**
  * Main TaskList component
  * Displays and manages a list of tasks with drag-and-drop, filtering, and CRUD operations
+ * Enhanced with debugging to identify data flow issues
  */
 export default function TaskList({
   tasks,
@@ -379,7 +407,7 @@ export default function TaskList({
   onDeleteTask,
   onToggleTaskDetails,
   selectedTaskId,
-  onToggleComplete, // Fixed prop name to match TodoPage
+  onToggleComplete,
   onEditTask,
 }) {
   const [activeId, setActiveId] = React.useState(null);
@@ -388,12 +416,45 @@ export default function TaskList({
   const [isBrowser, setIsBrowser] = React.useState(false);
   const { t } = useLanguage();
 
+  // Enhanced debugging to track data flow and identify issues
+  React.useEffect(() => {
+    console.log('===== TaskList Component Debug =====');
+    console.log('Received tasks prop:', tasks);
+    console.log('Tasks type:', typeof tasks);
+    console.log('Is tasks an array?', Array.isArray(tasks));
+    
+    if (Array.isArray(tasks)) {
+      console.log('Tasks array length:', tasks.length);
+      console.log('All tasks:', tasks);
+      
+      // Log each task with its completion status
+      tasks.forEach((task, index) => {
+        console.log(`Task ${index + 1}:`, {
+          id: task.id,
+          name: task.name || task.title,
+          completed: task.completed,
+          isFullDay: task.isFullDay,
+          date: task.date,
+          time: task.time
+        });
+      });
+
+      // Check filtering logic
+      const nonCompletedTasks = tasks.filter(task => !task.completed);
+      console.log('Non-completed tasks count:', nonCompletedTasks.length);
+      console.log('Non-completed tasks:', nonCompletedTasks);
+    } else {
+      console.error('Tasks is not an array! This will prevent rendering.');
+    }
+    console.log('=====================================');
+  }, [tasks]);
+
   // Set browser flag for portal rendering
   React.useEffect(() => {
     setIsBrowser(true);
   }, []);
 
-  // Memoized labels for internationalization
+  // Memoized labels for internationalization with comprehensive fallbacks
   const labels = React.useMemo(() => ({
     details: t('details') || 'Details',
     date: t('date') || 'Date',
@@ -422,21 +483,57 @@ export default function TaskList({
     priorityLow: t('priorityLow') || 'Low',
   }), [t]);
 
-  // Configure drag and drop sensors
+  // Configure drag and drop sensors with better activation constraints
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
 
-  // Filter and prepare tasks for display (only show non-completed tasks)
-  const displayItems = React.useMemo(
-    () => tasks
-      .map((taskObj, originalIndex) => ({ task: taskObj, originalIndex }))
-      .filter(({ task }) => !task.completed),
-    [tasks]
-  );
+  // Enhanced filtering and preparation logic with comprehensive error handling
+  const displayItems = React.useMemo(() => {
+    console.log('=== displayItems calculation ===');
+    
+    // Validate that tasks is an array
+    if (!Array.isArray(tasks)) {
+      console.warn('Tasks is not an array in displayItems calculation:', tasks);
+      return [];
+    }
+
+    // Filter for non-completed tasks and prepare for display
+    const filteredItems = tasks
+      .map((taskObj, originalIndex) => {
+        // Ensure task object has required properties with defaults
+        const normalizedTask = {
+          id: taskObj.id || `temp-${originalIndex}`,
+          name: taskObj.name || taskObj.title || 'Untitled Task',
+          title: taskObj.title || taskObj.name || 'Untitled Task',
+          details: taskObj.details || '',
+          date: taskObj.date || '0000-00-00',
+          time: taskObj.time || '00:00:00',
+          isFullDay: Boolean(taskObj.isFullDay),
+          urgent: Boolean(taskObj.urgent),
+          completed: Boolean(taskObj.completed),
+          tags: taskObj.tags || '',
+          priority: taskObj.priority || 'medium',
+          email: taskObj.email || '',
+          ...taskObj // Preserve any additional properties
+        };
+        
+        return { task: normalizedTask, originalIndex };
+      })
+      .filter(({ task }) => !task.completed);
+
+    console.log('Filtered display items:', filteredItems);
+    console.log('Display items count:', filteredItems.length);
+    
+    return filteredItems;
+  }, [tasks]);
 
   // Determine which task should be expanded
   const effectiveExpandedId = selectedTaskId ?? internalExpandedId;
@@ -445,6 +542,7 @@ export default function TaskList({
    * Handles toggling task details (expand/collapse)
    */
   const handleToggleDetails = React.useCallback((taskId) => {
+    console.log('Toggling details for task ID:', taskId);
     if (onToggleTaskDetails) {
       onToggleTaskDetails(taskId);
     } else {
@@ -456,6 +554,7 @@ export default function TaskList({
    * Handles request to delete a task (shows confirmation dialog)
    */
   const handleRequestDelete = React.useCallback((taskIndex) => {
+    console.log('Delete request for task at index:', taskIndex);
     setPendingDeleteIndex(taskIndex);
   }, []);
 
@@ -464,6 +563,7 @@ export default function TaskList({
    */
   const handleConfirmDelete = React.useCallback(() => {
     if (pendingDeleteIndex === null) return;
+    console.log('Confirming delete for task at index:', pendingDeleteIndex);
     onDeleteTask(pendingDeleteIndex);
     setPendingDeleteIndex(null);
   }, [pendingDeleteIndex, onDeleteTask]);
@@ -472,35 +572,50 @@ export default function TaskList({
    * Cancels task deletion
    */
   const handleCancelDelete = React.useCallback(() => {
+    console.log('Canceling task deletion');
     setPendingDeleteIndex(null);
   }, []);
 
   // Get the task that's pending deletion for confirmation dialog
-  const pendingDeleteTask = pendingDeleteIndex !== null ? tasks[pendingDeleteIndex] : null;
+  const pendingDeleteTask = React.useMemo(() => {
+    if (pendingDeleteIndex === null || !Array.isArray(tasks)) return null;
+    return tasks[pendingDeleteIndex] || null;
+  }, [pendingDeleteIndex, tasks]);
 
   /**
    * Handles drag start event
    */
-  const handleDragStart = (event) => {
+  const handleDragStart = React.useCallback((event) => {
+    console.log('Drag started for item:', event.active.id);
     setActiveId(event.active.id);
-  };
+  }, []);
 
   /**
    * Handles drag end event and reordering
    */
-  const handleDragEnd = (event) => {
+  const handleDragEnd = React.useCallback((event) => {
     const { active, over } = event;
+    console.log('Drag ended:', { activeId: active.id, overId: over?.id });
     setActiveId(null);
+
+    if (!Array.isArray(tasks)) {
+      console.warn('Cannot handle drag end: tasks is not an array');
+      return;
+    }
 
     // If dropped outside of a valid drop zone, treat as delete request
     if (!over) {
       const taskIndex = tasks.findIndex((task, index) => `task-${index}` === active.id);
-      if (taskIndex !== -1) onDeleteTask(taskIndex);
+      if (taskIndex !== -1) {
+        console.log('Deleting task dropped outside zone, index:', taskIndex);
+        onDeleteTask(taskIndex);
+      }
       return;
     }
 
     // If dropped on the container but not on another task, do nothing
     if (over.id === 'tasks-container') {
+      console.log('Dropped on container, no reordering');
       return;
     }
 
@@ -510,33 +625,64 @@ export default function TaskList({
       const newIndex = tasks.findIndex((task, index) => `task-${index}` === over.id);
 
       if (oldIndex !== -1 && newIndex !== -1) {
+        console.log('Reordering tasks from index', oldIndex, 'to', newIndex);
         setTasks(arrayMove(tasks, oldIndex, newIndex));
       }
     }
-  };
+  }, [tasks, onDeleteTask, setTasks]);
 
   // Find the task being dragged for the drag overlay
-  const activeTask = activeId ? tasks.find((task, index) => `task-${index}` === activeId) : null;
+  const activeTask = React.useMemo(() => {
+    if (!activeId || !Array.isArray(tasks)) return null;
+    return tasks.find((task, index) => `task-${index}` === activeId) || null;
+  }, [activeId, tasks]);
 
   /**
    * Handles toggling task completion status
-   * Fixed to use the correct prop name and parameter structure
+   * Uses proper callback pattern and fallback to direct state manipulation
    */
   const handleToggleCompleted = React.useCallback((originalIndex) => {
+    console.log('Toggling completion for task at index:', originalIndex);
+    
     if (typeof onToggleComplete === 'function') {
-      // Call the parent's toggle function with just the index
+      // Call the parent's toggle function with the task index
       onToggleComplete(originalIndex);
     } else {
+      console.log('Using fallback completion toggle');
       // Fallback to direct state manipulation if no callback provided
-      setTasks((prevTasks) =>
-        prevTasks.map((task, i) => 
+      setTasks((prevTasks) => {
+        if (!Array.isArray(prevTasks)) {
+          console.warn('Cannot toggle completion: prevTasks is not an array');
+          return prevTasks;
+        }
+        
+        return prevTasks.map((task, i) => 
           i === originalIndex 
             ? { ...task, completed: !task.completed } 
             : task
-        )
-      );
+        );
+      });
     }
   }, [onToggleComplete, setTasks]);
+
+  // Handle loading state
+  if (tasks === null || tasks === undefined) {
+    return (
+      <div className="text-center py-8 text-sm" style={{ color: 'var(--text-secondary)' }}>
+        Loading tasks...
+      </div>
+    );
+  }
+
+  // Handle invalid data type
+  if (!Array.isArray(tasks)) {
+    console.error('TaskList received invalid tasks data:', tasks);
+    return (
+      <div className="text-center py-8 text-sm" style={{ color: '#ef4444' }}>
+        Error: Invalid tasks data format. Expected array, received: {typeof tasks}
+      </div>
+    );
+  }
 
   return (
     <DndContext
@@ -556,7 +702,9 @@ export default function TaskList({
               className="text-center py-8 text-sm"
               style={{ color: 'var(--text-secondary)' }}
             >
-              No active tasks. Add a new task to get started!
+              {tasks.length === 0 
+                ? "No tasks found. Add a new task to get started!" 
+                : "All tasks are completed! Add a new task or check your completed tasks."}
             </div>
           ) : (
             displayItems.map(({ task: taskObj, originalIndex }, displayIndex) => (

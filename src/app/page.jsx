@@ -1,5 +1,5 @@
 'use client';                     // ⚠️ obligatoire si on utilise useState
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import TaskList from '../components/TaskList';
 import ThemeToggle from '../components/ThemeToggle';
@@ -7,20 +7,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import DashboardHeader from '../components/DashboardHeader';
 import TaskForm from '../components/TaskForm';
 import TaskActionBar from '../components/TaskActionBar';
-
-const TASKS_API_ENDPOINT = process.env.NEXT_PUBLIC_TASKS_API_ENDPOINT ?? '/api/tasks';
-const TASKS_API_KEY = process.env.NEXT_PUBLIC_TASKS_API_KEY ?? '';
-
-const buildUrl = (queryString = '') => (
-    queryString ? `${TASKS_API_ENDPOINT}?${queryString}` : TASKS_API_ENDPOINT
-);
-
-const defaultFetchOptions = {
-    headers: {
-        'Content-Type': 'application/json',
-        ...(TASKS_API_KEY ? { 'X-API-KEY': TASKS_API_KEY } : {}),
-    },
-};
+import { fetchTasks as fetchRemoteTasks, createTask as createRemoteTask, updateTask as updateRemoteTask, deleteTask as deleteRemoteTask } from '../lib/tasksClient';
 
 export default function HomePage() {
     const { t } = useLanguage();
@@ -53,52 +40,32 @@ export default function HomePage() {
         setIsTagHintVisible(false);
     };
 
-    const loadTasksFromAPI = async () => {
+    const loadTasksFromAPI = useCallback(async ({ useCache = true } = {}) => {
         if (status !== 'authenticated' || !session?.user?.email) {
             setTasks([]);
             return;
         }
 
         try {
-            const query = new URLSearchParams({ email: session.user.email });
-            const res = await fetch(buildUrl(query.toString()), {
-                ...defaultFetchOptions,
-                cache: 'no-store',
+            const { tasks: fetchedTasks, source } = await fetchRemoteTasks({
+                email: session.user.email,
+                cache: useCache,
             });
-            if (!res.ok) throw new Error('Erreur API');
-            const data = await res.json();
 
-            if (!Array.isArray(data)) {
-                setTasks([]);
-                return;
-            }
-
-            setTasks(data.map(task => ({
-                id: task.id,
-                name: task.title,
-                details: task.details || '',
-                date: task.date || '',
-                time: task.time || '',
-                isFullDay: task.isFullDay === 1 || task.isFullDay === true,
-                isUrgent: task.urgent === 1 || task.urgent === true,
-                completed: task.completed === 1 || task.completed === true,
-                createdAt: task.created_at || '',
-                tags: task.tags || '',
-                priority: task.priority || 'medium',
-            })));
+            console.log('[HomePage] tasks fetched from', source);
+            setTasks(fetchedTasks);
         } catch (error) {
             console.error('Erreur lors du chargement des tâches:', error);
             setTasks([]);
         }
-    };
+    }, [session?.user?.email, status]);
 
     const addTaskToAPI = async (newTask) => {
         if (status !== 'authenticated' || !session?.user?.email) return;
         try {
-            const res = await fetch(buildUrl(), {
-                method: 'POST',
-                ...defaultFetchOptions,
-                body: JSON.stringify({
+            const createdTask = await createRemoteTask({
+                email: session.user.email,
+                task: {
                     name: newTask.name,
                     details: newTask.details,
                     date: newTask.date,
@@ -108,13 +75,13 @@ export default function HomePage() {
                     completed: newTask.completed ?? false,
                     tags: newTask.tags ?? '',
                     priority: newTask.priority ?? 'medium',
-                    email: session.user.email,
-                })
+                },
             });
-            if (!res.ok) throw new Error('Erreur API');
-            await loadTasksFromAPI();
+
+            setTasks((prev) => [createdTask, ...prev]);
+            await loadTasksFromAPI({ useCache: false });
         } catch (error) {
-            console.error('Erreur lors de l\'ajout de la tâche:', error);
+            console.error('Erreur lors de l'ajout de la tâche:', error);
         }
     };
 
@@ -124,7 +91,7 @@ export default function HomePage() {
         const body = {};
 
         if (updatedFields.name !== undefined) {
-            body.title = updatedFields.name;
+            body.name = updatedFields.name;
         }
         if (updatedFields.details !== undefined) {
             body.details = updatedFields.details;
@@ -136,13 +103,13 @@ export default function HomePage() {
             body.time = updatedFields.time;
         }
         if (updatedFields.isFullDay !== undefined) {
-            body.isFullDay = updatedFields.isFullDay ? 1 : 0;
+            body.isFullDay = updatedFields.isFullDay;
         }
         if (updatedFields.isUrgent !== undefined) {
-            body.urgent = updatedFields.isUrgent ? 1 : 0;
+            body.isUrgent = updatedFields.isUrgent;
         }
         if (updatedFields.completed !== undefined) {
-            body.completed = updatedFields.completed ? 1 : 0;
+            body.completed = updatedFields.completed;
         }
         if (updatedFields.tags !== undefined) {
             body.tags = updatedFields.tags;
@@ -151,16 +118,15 @@ export default function HomePage() {
             body.priority = updatedFields.priority;
         }
 
-        body.email = session.user.email;
-
         try {
-            const res = await fetch(buildUrl(new URLSearchParams({ id: String(taskId) }).toString()), {
-                method: 'PUT',
-                ...defaultFetchOptions,
-                body: JSON.stringify(body)
+            const updatedTask = await updateRemoteTask({
+                email: session.user.email,
+                id: taskId,
+                updates: body,
             });
-            if (!res.ok) throw new Error('Erreur API');
-            await loadTasksFromAPI();
+
+            setTasks((prev) => prev.map((task) => (task.id === updatedTask.id ? updatedTask : task)));
+            await loadTasksFromAPI({ useCache: false });
         } catch (error) {
             console.error('Erreur lors de la mise à jour de la tâche:', error);
         }
@@ -169,28 +135,24 @@ export default function HomePage() {
     const deleteTaskFromAPI = async (taskId) => {
         if (status !== 'authenticated' || !session?.user?.email) return;
         try {
-            const query = new URLSearchParams({ id: String(taskId), email: session.user.email });
-            const res = await fetch(buildUrl(query.toString()), {
-                method: 'DELETE',
-                ...defaultFetchOptions,
+            await deleteRemoteTask({
+                email: session.user.email,
+                id: String(taskId),
             });
-            if (!res.ok) throw new Error('Erreur API');
-            await loadTasksFromAPI();
+            setTasks((prev) => prev.filter((task) => task.id !== taskId));
+            await loadTasksFromAPI({ useCache: false });
         } catch (error) {
             console.error('Erreur lors de la suppression de la tâche:', error);
         }
     };
 
     useEffect(() => {
-        if (status === 'authenticated' && session?.user?.email) {
-            loadTasksFromAPI();
-        }
+        loadTasksFromAPI({ useCache: true });
 
         if (status === 'unauthenticated') {
             setTasks([]);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [status, session?.user?.email]);
+    }, [status, session?.user?.email, loadTasksFromAPI]);
 
     const updateTasks = (newTasks) => {
         setTasks(newTasks);

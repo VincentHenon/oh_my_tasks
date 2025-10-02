@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Plus } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import TaskList from '../../components/TaskList';
@@ -10,96 +10,9 @@ import CrossIcon from '../../components/CrossIcon';
 import UserProfile from '../../components/UserProfile';
 import TaskHistory from '../../components/TaskHistory';
 import { useLanguage } from '../../contexts/LanguageContext';
+import tasksClient, { fetchTasks as fetchRemoteTasks, createTask as createRemoteTask, updateTask as updateRemoteTask, deleteTask as deleteRemoteTask } from '../../lib/tasksClient';
 
-const toBoolean = (value) => {
-    if (typeof value === 'boolean') return value;
-    if (typeof value === 'number') return value === 1;
-    if (typeof value === 'string') {
-        const normalized = value.trim().toLowerCase();
-        if (['1', 'true', 'yes', 'y'].includes(normalized)) return true;
-        if (['0', 'false', 'no', 'n', ''].includes(normalized)) return false;
-    }
-    return Boolean(value);
-};
-
-const extractTasksFromResponse = (payload, depth = 0) => {
-    if (!payload || depth > 6) return [];
-
-    if (Array.isArray(payload)) {
-        return payload;
-    }
-
-    if (typeof payload === 'string') {
-        try {
-            const parsed = JSON.parse(payload);
-            return extractTasksFromResponse(parsed, depth + 1);
-        } catch (_error) {
-            return [];
-        }
-    }
-
-    if (typeof payload !== 'object') {
-        return [];
-    }
-
-    const preferredKeys = ['tasks', 'data', 'items', 'results', 'records', 'rows'];
-
-    for (const key of preferredKeys) {
-        if (key in payload) {
-            const extracted = extractTasksFromResponse(payload[key], depth + 1);
-            if (Array.isArray(extracted)) {
-                return extracted;
-            }
-        }
-    }
-
-    if ('payload' in payload) {
-        const extracted = extractTasksFromResponse(payload.payload, depth + 1);
-        if (Array.isArray(extracted)) {
-            return extracted;
-        }
-    }
-
-    const objectValues = Object.values(payload).filter((value) => value !== null && typeof value === 'object');
-    if (objectValues.length > 0 && objectValues.every((value) => !Array.isArray(value))) {
-        const looksLikeTasks = objectValues.some((value) =>
-            value && (value.id !== undefined || value.title !== undefined || value.name !== undefined || value.task_id !== undefined)
-        );
-        if (looksLikeTasks) {
-            return objectValues;
-        }
-    }
-
-    for (const value of Object.values(payload)) {
-        const extracted = extractTasksFromResponse(value, depth + 1);
-        if (Array.isArray(extracted) && extracted.length > 0) {
-            return extracted;
-        }
-    }
-
-    return [];
-};
-
-const normalizeTaskFromApi = (task = {}) => {
-    const name = task?.name ?? task?.title ?? '';
-    const title = task?.title ?? task?.name ?? name;
-
-    return {
-        ...task,
-        id: task?.id ?? task?.task_id ?? task?._id ?? `temp-${Date.now()}`,
-        name,
-        title,
-        details: task?.details ?? task?.detail ?? '',
-        date: task?.date ?? '',
-        time: task?.time ?? '',
-        isFullDay: toBoolean(task?.isFullDay ?? task?.is_full_day),
-        isUrgent: toBoolean(task?.isUrgent ?? task?.urgent ?? task?.is_urgent),
-        urgent: toBoolean(task?.urgent ?? task?.isUrgent ?? task?.is_urgent),
-        completed: toBoolean(task?.completed ?? task?.isCompleted ?? task?.is_completed),
-        tags: task?.tags ?? '',
-        priority: task?.priority ?? 'medium',
-    };
-};
+const { normalizeTask: normalizeTaskFromApi } = tasksClient;
 
 export default function TodoPage() {
     const { t } = useLanguage();
@@ -142,88 +55,56 @@ export default function TodoPage() {
     }, [session, status, tasks, isLoadingTasks, apiError, hasAttemptedFetch]);
 
     // Fetch tasks from API when component mounts or user changes
+    const refreshTasks = useCallback(async ({ useCache = true } = {}) => {
+        if (status === 'loading') {
+            console.log('Session still loading, waiting...');
+            return;
+        }
+
+        if (status === 'unauthenticated') {
+            console.log('User not authenticated, skipping task fetch');
+            setHasAttemptedFetch(true);
+            setTasks([]);
+            return;
+        }
+
+        if (!session?.user?.email) {
+            console.log('No user email available, skipping task fetch');
+            setHasAttemptedFetch(true);
+            return;
+        }
+
+        setIsLoadingTasks(true);
+        setApiError(null);
+
+        try {
+            console.log('Fetching tasks for user via helper:', session.user.email);
+            const { tasks: fetchedTasks, source, payload } = await fetchRemoteTasks({
+                email: session.user.email,
+                cache: useCache,
+            });
+
+            console.log('Tasks fetch source:', source);
+            if (payload) {
+                console.log('Raw payload preview:', payload);
+            }
+
+            setTasks(fetchedTasks);
+            setHasAttemptedFetch(true);
+        } catch (error) {
+            console.error('Error fetching tasks from API:', error);
+            setApiError(error.message);
+            setHasAttemptedFetch(true);
+        } finally {
+            setIsLoadingTasks(false);
+        }
+    }, [session?.user?.email, status]);
+
     useEffect(() => {
-        const fetchTasksFromApi = async () => {
-            // Only fetch if user is authenticated and has an email
-            if (status === 'loading') {
-                console.log('Session still loading, waiting...');
-                return;
-            }
+        refreshTasks({ useCache: true });
+    }, [refreshTasks]);
 
-            if (status === 'unauthenticated') {
-                console.log('User not authenticated, skipping task fetch');
-                setHasAttemptedFetch(true);
-                return;
-            }
-
-            if (!session?.user?.email) {
-                console.log('No user email available, skipping task fetch');
-                setHasAttemptedFetch(true);
-                return;
-            }
-
-            // Avoid duplicate fetches
-            if (hasAttemptedFetch && !apiError) {
-                console.log('Already attempted fetch successfully, skipping');
-                return;
-            }
-
-            setIsLoadingTasks(true);
-            setApiError(null);
-
-            try {
-                console.log('Fetching tasks for user:', session.user.email);
-                
-                const apiUrl = `${process.env.NEXT_PUBLIC_TASKS_API_ENDPOINT}?email=${encodeURIComponent(session.user.email)}`;
-                console.log('Full API URL:', apiUrl);
-
-                const response = await fetch(apiUrl, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-api-key': process.env.NEXT_PUBLIC_TASKS_API_KEY,
-                    },
-                });
-
-                console.log('API Response status:', response.status);
-                console.log('API Response headers:', Object.fromEntries(response.headers.entries()));
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('API Error Response:', errorText);
-                    throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
-                }
-
-                const responseData = await response.json();
-                console.log('API Response data:', responseData);
-
-                const extractedTasks = extractTasksFromResponse(responseData);
-                console.log('Extracted tasks array:', extractedTasks);
-
-                if (Array.isArray(extractedTasks)) {
-                    const normalizedTasks = extractedTasks.map(normalizeTaskFromApi);
-                    console.log('Setting normalized tasks:', normalizedTasks);
-                    setTasks(normalizedTasks);
-                    setHasAttemptedFetch(true);
-                } else {
-                    console.warn('Could not extract tasks from API response. Falling back to empty list.');
-                    setTasks([]);
-                    setHasAttemptedFetch(true);
-                }
-
-            } catch (error) {
-                console.error('Error fetching tasks from API:', error);
-                setApiError(error.message);
-                setHasAttemptedFetch(true);
-                // Don't reset tasks on error, keep existing ones
-            } finally {
-                setIsLoadingTasks(false);
-            }
-        };
-
-        fetchTasksFromApi();
-    }, [session?.user?.email, status]); // Add status dependency
-
+    
     // Function to create a new task via API
     const createTaskInApi = async (taskData) => {
         if (!session?.user?.email) {
@@ -232,46 +113,15 @@ export default function TodoPage() {
 
         console.log('Creating task via API:', taskData);
 
-        const response = await fetch(process.env.NEXT_PUBLIC_TASKS_API_ENDPOINT, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': process.env.NEXT_PUBLIC_TASKS_API_KEY,
-            },
-            body: JSON.stringify({
-                ...taskData,
-                email: session.user.email,
-            }),
+        const createdTask = await createRemoteTask({
+            email: session.user.email,
+            task: taskData,
         });
 
-        console.log('Create task response status:', response.status);
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Create task error:', errorText);
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const responseData = await response.json();
-        console.log('Create task response:', responseData);
-        
-        if (!responseData.success) {
-            throw new Error(responseData.error || 'Failed to create task');
-        }
-
-        const taskPayload = responseData.task ?? responseData.createdTask ?? responseData.data;
-
-        if (Array.isArray(taskPayload)) {
-            return normalizeTaskFromApi(taskPayload[0] ?? { ...taskData });
-        }
-
-        if (taskPayload && typeof taskPayload === 'object') {
-            return normalizeTaskFromApi(taskPayload);
-        }
-
-        return normalizeTaskFromApi({ ...taskData, id: responseData.id ?? Date.now() });
+        return createdTask;
     };
 
+    
     // Function to update a task via API
     const updateTaskInApi = async (taskId, updates) => {
         if (!session?.user?.email) {
@@ -280,31 +130,16 @@ export default function TodoPage() {
 
         console.log('Updating task via API:', taskId, updates);
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_TASKS_API_ENDPOINT}?id=${taskId}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': process.env.NEXT_PUBLIC_TASKS_API_KEY,
-            },
-            body: JSON.stringify({
-                ...updates,
-                email: session.user.email,
-            }),
+        const updatedTask = await updateRemoteTask({
+            email: session.user.email,
+            id: taskId,
+            updates,
         });
 
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const responseData = await response.json();
-        
-        if (!responseData.success) {
-            throw new Error(responseData.error || 'Failed to update task');
-        }
-
-        return responseData.task;
+        return updatedTask;
     };
 
+    
     // Function to delete a task via API
     const deleteTaskFromApi = async (taskId) => {
         if (!session?.user?.email) {
@@ -313,27 +148,15 @@ export default function TodoPage() {
 
         console.log('Deleting task via API:', taskId);
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_TASKS_API_ENDPOINT}?id=${taskId}&email=${encodeURIComponent(session.user.email)}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': process.env.NEXT_PUBLIC_TASKS_API_KEY,
-            },
+        await deleteRemoteTask({
+            email: session.user.email,
+            id: taskId,
         });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const responseData = await response.json();
-        
-        if (!responseData.success) {
-            throw new Error(responseData.error || 'Failed to delete task');
-        }
 
         return true;
     };
 
+    
     // Event handlers for form inputs (unchanged)
     const handleNameChange = (e) => setTaskName(e.target.value);
     const handleDetailsChange = (e) => setTaskDetails(e.target.value);
@@ -370,8 +193,11 @@ export default function TodoPage() {
             const createdTask = await createTaskInApi(newTaskData);
             console.log('Task created successfully:', createdTask);
 
-            // Add the new task to local state
+            // Add the new task to local state for immediate feedback
             setTasks(prevTasks => [createdTask, ...prevTasks]);
+
+            // Refresh from server to ensure consistency
+            await refreshTasks({ useCache: false });
 
             // Clear the form
             clearTaskForm();
@@ -430,16 +256,16 @@ export default function TodoPage() {
             console.log('Task deleted successfully from API');
 
             // Remove from local state
-            const newTasksList = tasks.filter((task, i) => i !== taskIndex);
-            setTasks(newTasksList);
+            setTasks(prevTasks => prevTasks.filter((task, i) => i !== taskIndex));
+
+            await refreshTasks({ useCache: false });
 
         } catch (error) {
             console.error('Error deleting task:', error);
             setApiError(`Failed to delete task: ${error.message}`);
             
             // Optionally, still remove from local state as fallback
-            const newTasksList = tasks.filter((task, i) => i !== taskIndex);
-            setTasks(newTasksList);
+            setTasks(prevTasks => prevTasks.filter((task, i) => i !== taskIndex));
         }
     };
 
@@ -464,25 +290,25 @@ export default function TodoPage() {
             
             console.log('Task updated successfully:', updatedTask);
 
-            // Update local state
-            const updatedTasks = tasks.map((task, i) => 
+            // Update local state using server response
+            setTasks(prevTasks => prevTasks.map((task, i) => 
                 i === taskIndex 
-                    ? { ...task, completed: updatedCompletionStatus }
+                    ? { ...task, ...updatedTask }
                     : task
-            );
-            setTasks(updatedTasks);
+            ));
+
+            await refreshTasks({ useCache: false });
 
         } catch (error) {
             console.error('Error updating task:', error);
             setApiError(`Failed to update task: ${error.message}`);
             
             // Fallback: update local state anyway
-            const updatedTasks = tasks.map((task, i) => 
+            setTasks(prevTasks => prevTasks.map((task, i) => 
                 i === taskIndex 
                     ? { ...task, completed: updatedCompletionStatus }
                     : task
-            );
-            setTasks(updatedTasks);
+            ));
         }
     };
 

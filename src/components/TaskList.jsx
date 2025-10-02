@@ -24,6 +24,10 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+/**
+ * Formats a date value into a readable label
+ * Handles various date formats and edge cases
+ */
 const formatDateLabel = (value) => {
   if (!value) return '';
   const trimmed = String(value).trim();
@@ -38,6 +42,10 @@ const formatDateLabel = (value) => {
   });
 };
 
+/**
+ * Formats a time value into a readable label
+ * Handles various time formats and converts to 12-hour format
+ */
 const formatTimeLabel = (value) => {
   if (!value) return '';
   const trimmed = String(value).trim();
@@ -53,6 +61,10 @@ const formatTimeLabel = (value) => {
   });
 };
 
+/**
+ * Individual sortable task item component
+ * Handles display, interaction, and drag/drop functionality for a single task
+ */
 function SortableItem({
   id,
   task,
@@ -74,6 +86,7 @@ function SortableItem({
     isDragging,
   } = useSortable({ id });
 
+  // Create drag handle listeners that prevent event bubbling
   const dragHandleListeners = React.useMemo(() => {
     const { onPointerDown, ...rest } = listeners;
     return {
@@ -85,9 +98,11 @@ function SortableItem({
     };
   }, [listeners]);
 
+  // Check which controls should be shown based on available props
   const showCompletedControl = typeof onToggleCompleted === 'function';
   const showEditControl = typeof onEdit === 'function';
 
+  // Memoized card styling for drag animations
   const cardStyle = React.useMemo(() => ({
     transform: CSS.Transform.toString(transform),
     transition,
@@ -97,6 +112,7 @@ function SortableItem({
     boxShadow: isExpanded ? '0 0 0 2px var(--border-hover)' : 'none',
   }), [transform, transition, isDragging, isExpanded]);
 
+  // Format date and time for display
   const formattedDate = formatDateLabel(task.date);
   const formattedTime = task.isFullDay ? '' : formatTimeLabel(task.time);
   const metaParts = [];
@@ -105,6 +121,7 @@ function SortableItem({
   else if (formattedTime) metaParts.push(formattedTime);
   const topMetaVisible = metaParts.length > 0;
 
+  // Parse and prepare tags for display
   const tagList = React.useMemo(() => {
     if (!task.tags) return [];
     return String(task.tags)
@@ -113,19 +130,23 @@ function SortableItem({
       .filter(Boolean);
   }, [task.tags]);
 
+  // Determine priority information for display
   const priorityInfo = React.useMemo(() => {
     const slug = (task.priority || 'medium').toLowerCase();
     switch (slug) {
       case 'top':
       case 'high':
-        return { color: '#ef4444', label: labels.priorityTop, slug: 'top' };
+        return { color: '#ef4444', label: labels.priorityTop || 'High', slug: 'top' };
       case 'low':
-        return { color: '#22c55e', label: labels.priorityLow, slug: 'low' };
+        return { color: '#22c55e', label: labels.priorityLow || 'Low', slug: 'low' };
       default:
-        return { color: '#facc15', label: labels.priorityMedium, slug: 'medium' };
+        return { color: '#facc15', label: labels.priorityMedium || 'Medium', slug: 'medium' };
     }
   }, [task.priority, labels.priorityTop, labels.priorityMedium, labels.priorityLow]);
 
+  /**
+   * Renders the drag handle button
+   */
   const dragButton = (extraClasses) => (
     <button
       type="button"
@@ -139,6 +160,9 @@ function SortableItem({
     </button>
   );
 
+  /**
+   * Renders the action buttons (complete, details, delete)
+   */
   const renderActionButtons = (extraClasses) => (
     <div className={`flex items-center gap-2 ${extraClasses}`}>
       {showCompletedControl && (
@@ -147,7 +171,8 @@ function SortableItem({
           className="flex items-center gap-2 rounded px-2 py-1 text-xs min-[600px]:text-sm transition-colors border"
           onClick={(event) => {
             event.stopPropagation();
-            onToggleCompleted(task, originalIndex, !task.completed);
+            // Pass the original index (position in the full tasks array) instead of task object
+            onToggleCompleted(originalIndex);
           }}
           aria-pressed={task.completed}
           aria-label={task.completed ? labels.markAsTodo : labels.markAsDone}
@@ -197,14 +222,19 @@ function SortableItem({
     </div>
   );
 
+  // Get the task name from either 'name' or 'title' field (API compatibility)
+  const taskDisplayName = task.name || task.title || 'Untitled Task';
+
   return (
     <div ref={setNodeRef} style={cardStyle} {...attributes} className="p-4 rounded shadow-sm border">
       <div className="flex flex-col gap-3">
+        {/* Mobile layout - controls on top */}
         <div className="flex items-center justify-between min-[600px]:hidden">
           {dragButton('')}
           {renderActionButtons('')}
         </div>
 
+        {/* Mobile layout - task info */}
         <div className="min-[600px]:hidden space-y-1">
           <div className="flex flex-wrap items-center gap-2 text-sm" style={{ color: 'var(--text-primary)' }}>
             <span className="font-semibold">{displayIndex + 1}</span>
@@ -213,7 +243,7 @@ function SortableItem({
               style={{ backgroundColor: priorityInfo.color }}
             />
             <span className="font-medium capitalize break-words" style={{ color: 'var(--text-primary)' }}>
-              {task.name}
+              {taskDisplayName}
             </span>
           </div>
           <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
@@ -221,6 +251,7 @@ function SortableItem({
           </span>
         </div>
 
+        {/* Desktop layout - single row */}
         <div className="hidden min-[600px]:flex items-center gap-3 min-w-0">
           {dragButton('hidden min-[600px]:flex')}
 
@@ -241,7 +272,7 @@ function SortableItem({
 
           <div className="flex flex-col gap-1 min-w-0">
             <span className="font-medium capitalize truncate" style={{ color: 'var(--text-primary)' }}>
-              {task.name}
+              {taskDisplayName}
             </span>
             <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
               {topMetaVisible ? metaParts.join(' · ') : '\u00A0'}
@@ -252,17 +283,21 @@ function SortableItem({
         </div>
       </div>
 
+      {/* Expanded details section */}
       {isExpanded && (
         <div
           className="mt-4 pt-4 space-y-3 text-sm"
           style={{ borderTop: '1px solid var(--border-primary)' }}
         >
+          {/* Task details */}
           <div>
             <p className="uppercase text-xs tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+              {labels.details}
             </p>
             <p style={{ color: 'var(--text-primary)' }}>{task.details || labels.none}</p>
           </div>
 
+          {/* Time information */}
           {(task.isFullDay || formattedTime) && (
             <div className="flex flex-wrap gap-4" style={{ color: 'var(--text-secondary)' }}>
               <span>
@@ -271,6 +306,7 @@ function SortableItem({
             </div>
           )}
 
+          {/* Tags display */}
           {tagList.length > 0 && (
             <div
               className="flex flex-wrap items-center gap-2"
@@ -295,6 +331,7 @@ function SortableItem({
             </div>
           )}
 
+          {/* Edit button */}
           {showEditControl && (
             <button
               type="button"
@@ -319,6 +356,10 @@ function SortableItem({
   );
 }
 
+/**
+ * Droppable container for the task list
+ * Provides the drop zone for drag and drop operations
+ */
 function DroppableTasksContainer({ children }) {
   const { setNodeRef } = useDroppable({ id: 'tasks-container' });
   return (
@@ -328,13 +369,17 @@ function DroppableTasksContainer({ children }) {
   );
 }
 
+/**
+ * Main TaskList component
+ * Displays and manages a list of tasks with drag-and-drop, filtering, and CRUD operations
+ */
 export default function TaskList({
   tasks,
   setTasks,
   onDeleteTask,
   onToggleTaskDetails,
   selectedTaskId,
-  onToggleCompleted,
+  onToggleComplete, // Fixed prop name to match TodoPage
   onEditTask,
 }) {
   const [activeId, setActiveId] = React.useState(null);
@@ -343,21 +388,25 @@ export default function TaskList({
   const [isBrowser, setIsBrowser] = React.useState(false);
   const { t } = useLanguage();
 
+  // Set browser flag for portal rendering
   React.useEffect(() => {
     setIsBrowser(true);
   }, []);
 
+  // Memoized labels for internationalization
   const labels = React.useMemo(() => ({
-    details: t('details'),
-    date: t('date'),
-    time: t('time'),
-    taskCompleted: t('taskCompleted'),
-    editTask: t('editTask'),
+    details: t('details') || 'Details',
+    date: t('date') || 'Date',
+    time: t('time') || 'Time',
+    taskCompleted: t('taskCompleted') || 'Task completed',
+    editTask: t('editTask') || 'Edit task',
     completed: t('completed') || 'Done',
     notCompleted: t('notCompleted') || 'To do',
+    markAsDone: t('markAsDone') || 'Mark as done',
+    markAsTodo: t('markAsTodo') || 'Mark as to do',
     yes: t('yes') || 'Yes',
     no: t('no') || 'No',
-    none: ' ',
+    none: t('none') || 'None',
     noDate: t('noDate') || '—',
     noTime: t('noTime') || '—',
     allDayLabel: t('allDayLabel') || 'All day',
@@ -368,8 +417,12 @@ export default function TaskList({
     confirmDeleteMessage: t('confirmDeleteMessage') || 'Are you sure you want to delete this task?',
     confirmDelete: t('confirmDelete') || 'Delete',
     cancel: t('cancel') || 'Cancel',
+    priorityTop: t('priorityTop') || 'High',
+    priorityMedium: t('priorityMedium') || 'Medium',
+    priorityLow: t('priorityLow') || 'Low',
   }), [t]);
 
+  // Configure drag and drop sensors
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -377,6 +430,7 @@ export default function TaskList({
     }),
   );
 
+  // Filter and prepare tasks for display (only show non-completed tasks)
   const displayItems = React.useMemo(
     () => tasks
       .map((taskObj, originalIndex) => ({ task: taskObj, originalIndex }))
@@ -384,8 +438,12 @@ export default function TaskList({
     [tasks]
   );
 
+  // Determine which task should be expanded
   const effectiveExpandedId = selectedTaskId ?? internalExpandedId;
 
+  /**
+   * Handles toggling task details (expand/collapse)
+   */
   const handleToggleDetails = React.useCallback((taskId) => {
     if (onToggleTaskDetails) {
       onToggleTaskDetails(taskId);
@@ -394,40 +452,59 @@ export default function TaskList({
     }
   }, [onToggleTaskDetails]);
 
+  /**
+   * Handles request to delete a task (shows confirmation dialog)
+   */
   const handleRequestDelete = React.useCallback((taskIndex) => {
     setPendingDeleteIndex(taskIndex);
   }, []);
 
+  /**
+   * Confirms and executes task deletion
+   */
   const handleConfirmDelete = React.useCallback(() => {
     if (pendingDeleteIndex === null) return;
     onDeleteTask(pendingDeleteIndex);
     setPendingDeleteIndex(null);
   }, [pendingDeleteIndex, onDeleteTask]);
 
+  /**
+   * Cancels task deletion
+   */
   const handleCancelDelete = React.useCallback(() => {
     setPendingDeleteIndex(null);
   }, []);
 
+  // Get the task that's pending deletion for confirmation dialog
   const pendingDeleteTask = pendingDeleteIndex !== null ? tasks[pendingDeleteIndex] : null;
 
+  /**
+   * Handles drag start event
+   */
   const handleDragStart = (event) => {
     setActiveId(event.active.id);
   };
 
+  /**
+   * Handles drag end event and reordering
+   */
   const handleDragEnd = (event) => {
     const { active, over } = event;
     setActiveId(null);
 
+    // If dropped outside of a valid drop zone, treat as delete request
     if (!over) {
       const taskIndex = tasks.findIndex((task, index) => `task-${index}` === active.id);
       if (taskIndex !== -1) onDeleteTask(taskIndex);
       return;
     }
 
+    // If dropped on the container but not on another task, do nothing
     if (over.id === 'tasks-container') {
       return;
     }
 
+    // Handle reordering if dropped on another task
     if (active.id !== over.id) {
       const oldIndex = tasks.findIndex((task, index) => `task-${index}` === active.id);
       const newIndex = tasks.findIndex((task, index) => `task-${index}` === over.id);
@@ -438,18 +515,28 @@ export default function TaskList({
     }
   };
 
+  // Find the task being dragged for the drag overlay
   const activeTask = activeId ? tasks.find((task, index) => `task-${index}` === activeId) : null;
 
-  // Handler to mark a task as completed
-  const handleToggleCompleted = React.useCallback((task, originalIndex, completed) => {
-    if (typeof onToggleCompleted === 'function') {
-      onToggleCompleted(task, originalIndex, completed);
+  /**
+   * Handles toggling task completion status
+   * Fixed to use the correct prop name and parameter structure
+   */
+  const handleToggleCompleted = React.useCallback((originalIndex) => {
+    if (typeof onToggleComplete === 'function') {
+      // Call the parent's toggle function with just the index
+      onToggleComplete(originalIndex);
     } else {
+      // Fallback to direct state manipulation if no callback provided
       setTasks((prevTasks) =>
-        prevTasks.map((t, i) => (i === originalIndex ? { ...t, completed } : t))
+        prevTasks.map((task, i) => 
+          i === originalIndex 
+            ? { ...task, completed: !task.completed } 
+            : task
+        )
       );
     }
-  }, [onToggleCompleted, setTasks]);
+  }, [onToggleComplete, setTasks]);
 
   return (
     <DndContext
@@ -463,24 +550,35 @@ export default function TaskList({
         strategy={verticalListSortingStrategy}
       >
         <DroppableTasksContainer>
-          {displayItems.map(({ task: taskObj, originalIndex }, displayIndex) => (
-            <SortableItem
-              key={`task-${originalIndex}`}
-              id={`task-${originalIndex}`}
-              task={taskObj}
-              displayIndex={displayIndex}
-              originalIndex={originalIndex}
-              onToggleDetails={handleToggleDetails}
-              isExpanded={effectiveExpandedId === taskObj.id}
-              onToggleCompleted={handleToggleCompleted}
-              onEdit={onEditTask}
-              onRequestDelete={handleRequestDelete}
-              labels={labels}
-            />
-          ))}
+          {displayItems.length === 0 ? (
+            // Show message when no active tasks
+            <div 
+              className="text-center py-8 text-sm"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              No active tasks. Add a new task to get started!
+            </div>
+          ) : (
+            displayItems.map(({ task: taskObj, originalIndex }, displayIndex) => (
+              <SortableItem
+                key={`task-${originalIndex}`}
+                id={`task-${originalIndex}`}
+                task={taskObj}
+                displayIndex={displayIndex}
+                originalIndex={originalIndex}
+                onToggleDetails={handleToggleDetails}
+                isExpanded={effectiveExpandedId === taskObj.id}
+                onToggleCompleted={handleToggleCompleted}
+                onEdit={onEditTask}
+                onRequestDelete={handleRequestDelete}
+                labels={labels}
+              />
+            ))
+          )}
         </DroppableTasksContainer>
       </SortableContext>
 
+      {/* Drag overlay - shows the dragged item */}
       <DragOverlay>
         {activeId && activeTask ? (
           <div
@@ -493,7 +591,7 @@ export default function TaskList({
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-4 flex-1">
                 <span className="font-medium capitalize" style={{ color: 'var(--text-primary)' }}>
-                  {activeTask.name}
+                  {activeTask.name || activeTask.title || 'Untitled Task'}
                 </span>
                 <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                   {formatDateLabel(activeTask.date) || labels.noDate}
@@ -508,8 +606,9 @@ export default function TaskList({
             </div>
           </div>
         ) : null}
-
       </DragOverlay>
+
+      {/* Delete confirmation modal */}
       {isBrowser && pendingDeleteIndex !== null &&
         createPortal(
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
@@ -522,10 +621,13 @@ export default function TaskList({
               }}
             >
               <div className="space-y-1">
-                <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{labels.confirmDeleteTitle}</h3>
+                <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {labels.confirmDeleteTitle}
+                </h3>
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                   {labels.confirmDeleteMessage}
-                  {pendingDeleteTask?.name ? ` "${pendingDeleteTask.name}"` : ''}
+                  {pendingDeleteTask?.name || pendingDeleteTask?.title ? 
+                    ` "${pendingDeleteTask.name || pendingDeleteTask.title}"` : ''}
                 </p>
               </div>
               <div className="flex justify-end gap-3">
@@ -557,7 +659,6 @@ export default function TaskList({
           </div>,
           document.body
         )}
-
     </DndContext>
   );
 }

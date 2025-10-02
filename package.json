@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack --port 3000",
     "dev:https": "concurrently --kill-others-on-fail --names \"next,proxy\" \"next dev --turbopack --hostname 0.0.0.0 --port 3003\" \"local-ssl-proxy --source 3443 --target 3003 --cert .cert/cert.pem --key .cert/key.pem --hostname 0.0.0.0\"",
-    "build": "next build --turbopack",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "kill:ports": "lsof -ti :3000 -ti :3443 | xargs -r kill -9"

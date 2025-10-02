@@ -55,7 +55,7 @@ export default function HomePage() {
             console.log('[HomePage] tasks fetched from', source);
             setTasks(fetchedTasks);
         } catch (error) {
-            console.error('Erreur lors du chargement des tâches:', error);
+            console.error("Erreur lors du chargement des tâches:", error);
             setTasks([]);
         }
     }, [session?.user?.email, status]);
@@ -81,7 +81,7 @@ export default function HomePage() {
             setTasks((prev) => [createdTask, ...prev]);
             await loadTasksFromAPI({ useCache: false });
         } catch (error) {
-            console.error('Erreur lors de l'ajout de la tâche:', error);
+            console.error("Erreur lors de l'ajout de la tâche:", error);
         }
     };
 
@@ -128,7 +128,7 @@ export default function HomePage() {
             setTasks((prev) => prev.map((task) => (task.id === updatedTask.id ? updatedTask : task)));
             await loadTasksFromAPI({ useCache: false });
         } catch (error) {
-            console.error('Erreur lors de la mise à jour de la tâche:', error);
+            console.error("Erreur lors de la mise à jour de la tâche:", error);
         }
     };
 
@@ -142,7 +142,7 @@ export default function HomePage() {
             setTasks((prev) => prev.filter((task) => task.id !== taskId));
             await loadTasksFromAPI({ useCache: false });
         } catch (error) {
-            console.error('Erreur lors de la suppression de la tâche:', error);
+            console.error("Erreur lors de la suppression de la tâche:", error);
         }
     };
 

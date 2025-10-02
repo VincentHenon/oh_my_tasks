@@ -11,6 +11,38 @@ import UserProfile from '../../components/UserProfile';
 import TaskHistory from '../../components/TaskHistory';
 import { useLanguage } from '../../contexts/LanguageContext';
 
+const toBoolean = (value) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['1', 'true', 'yes', 'y'].includes(normalized)) return true;
+        if (['0', 'false', 'no', 'n', ''].includes(normalized)) return false;
+    }
+    return Boolean(value);
+};
+
+const normalizeTaskFromApi = (task = {}) => {
+    const name = task?.name ?? task?.title ?? '';
+    const title = task?.title ?? task?.name ?? name;
+
+    return {
+        ...task,
+        id: task?.id ?? task?.task_id ?? task?._id ?? `temp-${Date.now()}`,
+        name,
+        title,
+        details: task?.details ?? task?.detail ?? '',
+        date: task?.date ?? '',
+        time: task?.time ?? '',
+        isFullDay: toBoolean(task?.isFullDay ?? task?.is_full_day),
+        isUrgent: toBoolean(task?.isUrgent ?? task?.urgent ?? task?.is_urgent),
+        urgent: toBoolean(task?.urgent ?? task?.isUrgent ?? task?.is_urgent),
+        completed: toBoolean(task?.completed ?? task?.isCompleted ?? task?.is_completed),
+        tags: task?.tags ?? '',
+        priority: task?.priority ?? 'medium',
+    };
+};
+
 export default function TodoPage() {
     const { t } = useLanguage();
     const { data: session, status } = useSession();
@@ -109,13 +141,15 @@ export default function TodoPage() {
 
                 // Handle the response structure from your PHP API
                 if (responseData.success && Array.isArray(responseData.tasks)) {
-                    console.log('Setting tasks from API:', responseData.tasks);
-                    setTasks(responseData.tasks);
+                    const normalizedTasks = responseData.tasks.map(normalizeTaskFromApi);
+                    console.log('Setting tasks from API:', normalizedTasks);
+                    setTasks(normalizedTasks);
                     setHasAttemptedFetch(true);
                 } else if (Array.isArray(responseData)) {
                     // Fallback if API returns tasks array directly
-                    console.log('Setting tasks from direct array:', responseData);
-                    setTasks(responseData);
+                    const normalizedTasks = responseData.map(normalizeTaskFromApi);
+                    console.log('Setting tasks from direct array:', normalizedTasks);
+                    setTasks(normalizedTasks);
                     setHasAttemptedFetch(true);
                 } else {
                     console.warn('Unexpected API response structure:', responseData);
@@ -171,7 +205,17 @@ export default function TodoPage() {
             throw new Error(responseData.error || 'Failed to create task');
         }
 
-        return responseData.task;
+        const taskPayload = responseData.task ?? responseData.createdTask ?? responseData.data;
+
+        if (Array.isArray(taskPayload)) {
+            return normalizeTaskFromApi(taskPayload[0] ?? { ...taskData });
+        }
+
+        if (taskPayload && typeof taskPayload === 'object') {
+            return normalizeTaskFromApi(taskPayload);
+        }
+
+        return normalizeTaskFromApi({ ...taskData, id: responseData.id ?? Date.now() });
     };
 
     // Function to update a task via API
@@ -286,11 +330,11 @@ export default function TodoPage() {
             setApiError(`Failed to create task: ${error.message}`);
             
             // Optionally, still add to local state as fallback
-            const fallbackTask = {
+            const fallbackTask = normalizeTaskFromApi({
                 id: Date.now(), // Temporary ID for local state
                 ...newTaskData,
                 createdAt: new Date(),
-            };
+            });
             
             setTasks(prevTasks => [fallbackTask, ...prevTasks]);
             clearTaskForm();

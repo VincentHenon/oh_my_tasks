@@ -24,6 +24,17 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+const toBoolean = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'y'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'n', ''].includes(normalized)) return false;
+  }
+  return Boolean(value);
+};
+
 /**
  * Formats a date value into a readable label
  * Handles various date formats and edge cases from the PHP API
@@ -516,9 +527,9 @@ export default function TaskList({
           details: taskObj.details || '',
           date: taskObj.date || '0000-00-00',
           time: taskObj.time || '00:00:00',
-          isFullDay: Boolean(taskObj.isFullDay),
-          urgent: Boolean(taskObj.urgent),
-          completed: Boolean(taskObj.completed),
+          isFullDay: toBoolean(taskObj.isFullDay),
+          urgent: toBoolean(taskObj.urgent ?? taskObj.isUrgent),
+          completed: toBoolean(taskObj.completed),
           tags: taskObj.tags || '',
           priority: taskObj.priority || 'medium',
           email: taskObj.email || '',

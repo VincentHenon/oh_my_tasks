@@ -22,6 +22,64 @@ const toBoolean = (value) => {
     return Boolean(value);
 };
 
+const extractTasksFromResponse = (payload, depth = 0) => {
+    if (!payload || depth > 6) return [];
+
+    if (Array.isArray(payload)) {
+        return payload;
+    }
+
+    if (typeof payload === 'string') {
+        try {
+            const parsed = JSON.parse(payload);
+            return extractTasksFromResponse(parsed, depth + 1);
+        } catch (_error) {
+            return [];
+        }
+    }
+
+    if (typeof payload !== 'object') {
+        return [];
+    }
+
+    const preferredKeys = ['tasks', 'data', 'items', 'results', 'records', 'rows'];
+
+    for (const key of preferredKeys) {
+        if (key in payload) {
+            const extracted = extractTasksFromResponse(payload[key], depth + 1);
+            if (Array.isArray(extracted)) {
+                return extracted;
+            }
+        }
+    }
+
+    if ('payload' in payload) {
+        const extracted = extractTasksFromResponse(payload.payload, depth + 1);
+        if (Array.isArray(extracted)) {
+            return extracted;
+        }
+    }
+
+    const objectValues = Object.values(payload).filter((value) => value !== null && typeof value === 'object');
+    if (objectValues.length > 0 && objectValues.every((value) => !Array.isArray(value))) {
+        const looksLikeTasks = objectValues.some((value) =>
+            value && (value.id !== undefined || value.title !== undefined || value.name !== undefined || value.task_id !== undefined)
+        );
+        if (looksLikeTasks) {
+            return objectValues;
+        }
+    }
+
+    for (const value of Object.values(payload)) {
+        const extracted = extractTasksFromResponse(value, depth + 1);
+        if (Array.isArray(extracted) && extracted.length > 0) {
+            return extracted;
+        }
+    }
+
+    return [];
+};
+
 const normalizeTaskFromApi = (task = {}) => {
     const name = task?.name ?? task?.title ?? '';
     const title = task?.title ?? task?.name ?? name;
@@ -139,20 +197,16 @@ export default function TodoPage() {
                 const responseData = await response.json();
                 console.log('API Response data:', responseData);
 
-                // Handle the response structure from your PHP API
-                if (responseData.success && Array.isArray(responseData.tasks)) {
-                    const normalizedTasks = responseData.tasks.map(normalizeTaskFromApi);
-                    console.log('Setting tasks from API:', normalizedTasks);
-                    setTasks(normalizedTasks);
-                    setHasAttemptedFetch(true);
-                } else if (Array.isArray(responseData)) {
-                    // Fallback if API returns tasks array directly
-                    const normalizedTasks = responseData.map(normalizeTaskFromApi);
-                    console.log('Setting tasks from direct array:', normalizedTasks);
+                const extractedTasks = extractTasksFromResponse(responseData);
+                console.log('Extracted tasks array:', extractedTasks);
+
+                if (Array.isArray(extractedTasks)) {
+                    const normalizedTasks = extractedTasks.map(normalizeTaskFromApi);
+                    console.log('Setting normalized tasks:', normalizedTasks);
                     setTasks(normalizedTasks);
                     setHasAttemptedFetch(true);
                 } else {
-                    console.warn('Unexpected API response structure:', responseData);
+                    console.warn('Could not extract tasks from API response. Falling back to empty list.');
                     setTasks([]);
                     setHasAttemptedFetch(true);
                 }

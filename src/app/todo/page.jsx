@@ -1,4 +1,4 @@
-'use client';                     // ⚠️ obligatoire si on utilise useState
+'use client';
 import React, { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { useSession } from 'next-auth/react';
@@ -13,7 +13,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 
 export default function TodoPage() {
     const { t } = useLanguage();
-    const { data: session } = useSession();
+    const { data: session, status } = useSession();
     
     // Form states for task creation
     const [taskName, setTaskName] = useState("");
@@ -26,6 +26,7 @@ export default function TodoPage() {
     const [tasks, setTasks] = useState([]);
     const [isLoadingTasks, setIsLoadingTasks] = useState(false);
     const [apiError, setApiError] = useState(null);
+    const [hasAttemptedFetch, setHasAttemptedFetch] = useState(false);
     
     // UI states
     const [showAddForm, setShowAddForm] = useState(false);
@@ -34,12 +35,46 @@ export default function TodoPage() {
     const activeTasks = tasks.filter((task) => !task.completed);
     const completedTasks = tasks.filter((task) => task.completed);
 
+    // Enhanced debugging for data flow
+    useEffect(() => {
+        console.log('===== TodoPage Debug Info =====');
+        console.log('Session status:', status);
+        console.log('Session data:', session);
+        console.log('User email:', session?.user?.email);
+        console.log('Tasks state:', tasks);
+        console.log('Is loading:', isLoadingTasks);
+        console.log('API Error:', apiError);
+        console.log('Has attempted fetch:', hasAttemptedFetch);
+        console.log('Environment variables:');
+        console.log('- API Endpoint:', process.env.NEXT_PUBLIC_TASKS_API_ENDPOINT);
+        console.log('- API Key (first 10 chars):', process.env.NEXT_PUBLIC_TASKS_API_KEY?.substring(0, 10) + '...');
+        console.log('=====================================');
+    }, [session, status, tasks, isLoadingTasks, apiError, hasAttemptedFetch]);
+
     // Fetch tasks from API when component mounts or user changes
     useEffect(() => {
         const fetchTasksFromApi = async () => {
-            // Only fetch if user is logged in and has an email
+            // Only fetch if user is authenticated and has an email
+            if (status === 'loading') {
+                console.log('Session still loading, waiting...');
+                return;
+            }
+
+            if (status === 'unauthenticated') {
+                console.log('User not authenticated, skipping task fetch');
+                setHasAttemptedFetch(true);
+                return;
+            }
+
             if (!session?.user?.email) {
                 console.log('No user email available, skipping task fetch');
+                setHasAttemptedFetch(true);
+                return;
+            }
+
+            // Avoid duplicate fetches
+            if (hasAttemptedFetch && !apiError) {
+                console.log('Already attempted fetch successfully, skipping');
                 return;
             }
 
@@ -50,7 +85,7 @@ export default function TodoPage() {
                 console.log('Fetching tasks for user:', session.user.email);
                 
                 const apiUrl = `${process.env.NEXT_PUBLIC_TASKS_API_ENDPOINT}?email=${encodeURIComponent(session.user.email)}`;
-                console.log('API URL:', apiUrl);
+                console.log('Full API URL:', apiUrl);
 
                 const response = await fetch(apiUrl, {
                     method: 'GET',
@@ -61,9 +96,12 @@ export default function TodoPage() {
                 });
 
                 console.log('API Response status:', response.status);
+                console.log('API Response headers:', Object.fromEntries(response.headers.entries()));
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorText = await response.text();
+                    console.error('API Error Response:', errorText);
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
                 }
 
                 const responseData = await response.json();
@@ -71,30 +109,40 @@ export default function TodoPage() {
 
                 // Handle the response structure from your PHP API
                 if (responseData.success && Array.isArray(responseData.tasks)) {
-                    console.log('Setting tasks:', responseData.tasks);
+                    console.log('Setting tasks from API:', responseData.tasks);
                     setTasks(responseData.tasks);
+                    setHasAttemptedFetch(true);
+                } else if (Array.isArray(responseData)) {
+                    // Fallback if API returns tasks array directly
+                    console.log('Setting tasks from direct array:', responseData);
+                    setTasks(responseData);
+                    setHasAttemptedFetch(true);
                 } else {
                     console.warn('Unexpected API response structure:', responseData);
                     setTasks([]);
+                    setHasAttemptedFetch(true);
                 }
 
             } catch (error) {
                 console.error('Error fetching tasks from API:', error);
                 setApiError(error.message);
-                // Keep existing tasks on error, don't reset to empty array
+                setHasAttemptedFetch(true);
+                // Don't reset tasks on error, keep existing ones
             } finally {
                 setIsLoadingTasks(false);
             }
         };
 
         fetchTasksFromApi();
-    }, [session?.user?.email]); // Re-fetch when user email changes
+    }, [session?.user?.email, status]); // Add status dependency
 
     // Function to create a new task via API
     const createTaskInApi = async (taskData) => {
         if (!session?.user?.email) {
             throw new Error('User not authenticated');
         }
+
+        console.log('Creating task via API:', taskData);
 
         const response = await fetch(process.env.NEXT_PUBLIC_TASKS_API_ENDPOINT, {
             method: 'POST',
@@ -108,11 +156,16 @@ export default function TodoPage() {
             }),
         });
 
+        console.log('Create task response status:', response.status);
+
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Create task error:', errorText);
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         const responseData = await response.json();
+        console.log('Create task response:', responseData);
         
         if (!responseData.success) {
             throw new Error(responseData.error || 'Failed to create task');
@@ -126,6 +179,8 @@ export default function TodoPage() {
         if (!session?.user?.email) {
             throw new Error('User not authenticated');
         }
+
+        console.log('Updating task via API:', taskId, updates);
 
         const response = await fetch(`${process.env.NEXT_PUBLIC_TASKS_API_ENDPOINT}?id=${taskId}`, {
             method: 'PUT',
@@ -158,6 +213,8 @@ export default function TodoPage() {
             throw new Error('User not authenticated');
         }
 
+        console.log('Deleting task via API:', taskId);
+
         const response = await fetch(`${process.env.NEXT_PUBLIC_TASKS_API_ENDPOINT}?id=${taskId}&email=${encodeURIComponent(session.user.email)}`, {
             method: 'DELETE',
             headers: {
@@ -179,23 +236,11 @@ export default function TodoPage() {
         return true;
     };
 
-    // Event handlers for form inputs
-    const handleNameChange = (e) => {
-        setTaskName(e.target.value);
-    };
-
-    const handleDetailsChange = (e) => {
-        setTaskDetails(e.target.value);
-    };
-
-    const handleDateChange = (e) => {
-        setTaskDate(e.target.value);
-    };
-
-    const handleTimeChange = (e) => {
-        setTaskTime(e.target.value);
-    };
-
+    // Event handlers for form inputs (unchanged)
+    const handleNameChange = (e) => setTaskName(e.target.value);
+    const handleDetailsChange = (e) => setTaskDetails(e.target.value);
+    const handleDateChange = (e) => setTaskDate(e.target.value);
+    const handleTimeChange = (e) => setTaskTime(e.target.value);
     const handleFullDayChange = (e) => {
         setIsFullDay(e.target.checked);
         if (e.target.checked) {
@@ -265,7 +310,6 @@ export default function TodoPage() {
     // Toggle add form visibility
     const toggleAddForm = () => {
         setShowAddForm(!showAddForm);
-        // Clear form when closing
         if (showAddForm) {
             clearTaskForm();
         }
@@ -382,6 +426,19 @@ export default function TodoPage() {
                     oh my tasks
                 </h1>
 
+                {/* Enhanced status display */}
+                {status === 'loading' && (
+                    <div className="mb-4 p-3 rounded-lg bg-blue-100 border border-blue-300 text-blue-700">
+                        Loading authentication...
+                    </div>
+                )}
+
+                {status === 'unauthenticated' && (
+                    <div className="mb-4 p-3 rounded-lg bg-yellow-100 border border-yellow-300 text-yellow-700">
+                        Please sign in to view and manage your tasks.
+                    </div>
+                )}
+
                 {/* Display API error if there is one */}
                 {apiError && (
                     <div className="mb-4 p-3 rounded-lg bg-red-100 border border-red-300 text-red-700">
@@ -402,15 +459,19 @@ export default function TodoPage() {
                     </div>
                 )}
 
-                {/* Display authentication status */}
-                {!session?.user?.email && (
-                    <div className="mb-4 p-3 rounded-lg bg-yellow-100 border border-yellow-300 text-yellow-700">
-                        Please sign in to view and manage your tasks.
+                {/* Debug information in development */}
+                {process.env.NODE_ENV === 'development' && (
+                    <div className="mb-4 p-3 rounded-lg bg-gray-100 border border-gray-300 text-gray-700 text-xs">
+                        <strong>Debug Info:</strong> 
+                        Session: {status} | 
+                        Tasks: {tasks.length} | 
+                        Loading: {isLoadingTasks ? 'Yes' : 'No'} | 
+                        Email: {session?.user?.email || 'None'}
                     </div>
                 )}
 
                 {/* Task Creation Form - Only show when toggled */}
-                {showAddForm && (
+                {showAddForm && session?.user && (
                     <div className="mb-6 p-4 rounded-lg w-full max-w-[800px] relative" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-primary)' }}>
                         {/* Close button in top right corner */}
                         <CrossIcon
@@ -537,33 +598,37 @@ export default function TodoPage() {
                     </div>
                 )}
 
-                {/* Display task list with API-fetched data */}
-                <TaskList 
-                    tasks={tasks} 
-                    setTasks={setTasks} 
-                    onDeleteTask={deleteTask}
-                    onToggleComplete={toggleTaskCompletion}
-                />
+                {/* Display task list with API-fetched data - Always render even if empty */}
+                {session?.user && (
+                    <TaskList 
+                        tasks={tasks} 
+                        setTasks={setTasks} 
+                        onDeleteTask={deleteTask}
+                        onToggleComplete={toggleTaskCompletion}
+                    />
+                )}
 
                 {/* Task History for completed tasks */}
-                <TaskHistory tasks={completedTasks} />
+                {session?.user && <TaskHistory tasks={completedTasks} />}
 
                 {/* Action Buttons - Add Task and Voice Input */}
-                <div className="mt-6 w-full max-w-[800px] flex items-center gap-3">
-                    <button
-                        onClick={toggleAddForm}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:opacity-80"
-                        style={{
-                            backgroundColor: '#4a5568',
-                            color: 'white'
-                        }}
-                    >
-                        <Plus size={20} />
-                        <span className="hidden min-[600px]:inline">{t('addTaskManually')}</span>
-                    </button>
-                    
-                    <VoiceInput onTaskParsed={handleVoiceTaskParsed} />
-                </div>
+                {session?.user && (
+                    <div className="mt-6 w-full max-w-[800px] flex items-center gap-3">
+                        <button
+                            onClick={toggleAddForm}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:opacity-80"
+                            style={{
+                                backgroundColor: '#4a5568',
+                                color: 'white'
+                            }}
+                        >
+                            <Plus size={20} />
+                            <span className="hidden min-[600px]:inline">{t('addTaskManually')}</span>
+                        </button>
+                        
+                        <VoiceInput onTaskParsed={handleVoiceTaskParsed} />
+                    </div>
+                )}
 
                 <p className="text-sm mt-4" style={{ color: 'var(--text-secondary)' }}>
                     <strong>{t('tips')}</strong> {t('tipsText')}

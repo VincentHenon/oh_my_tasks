@@ -36,6 +36,11 @@ export const UserProfile = ({ tasks = [] }) => {
         router.push('/signin');
     };
 
+    const handleOpenSettings = () => {
+        setIsOpen(false);
+        router.push('/settings');
+    };
+
     // Si l'utilisateur n'est pas connecté, afficher le bouton de connexion
     if (!session) {
         return (
@@ -149,6 +154,7 @@ export const UserProfile = ({ tasks = [] }) => {
                         <button 
                             className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                             style={{ color: 'var(--text-primary)' }}
+                            onClick={handleOpenSettings}
                         >
                             <Settings size={18} style={{ color: 'var(--text-secondary)' }} />
                             <span>{t('settings')}</span>

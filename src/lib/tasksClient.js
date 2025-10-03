@@ -1,5 +1,5 @@
-const API_ENDPOINT = process.env.NEXT_PUBLIC_TASKS_API_ENDPOINT ?? '/api/tasks';
-const API_KEY = process.env.NEXT_PUBLIC_TASKS_API_KEY ?? '';
+const API_ENDPOINT = process.env.NEXT_PUBLIC_TASKS_API_ENDPOINT ?? process.env.TASKS_API_ENDPOINT ?? '/api/tasks';
+const API_KEY = process.env.NEXT_PUBLIC_TASKS_API_KEY ?? process.env.TASKS_API_KEY ?? '';
 
 const CACHE_NAMESPACE = 'ohmytasks';
 const CACHE_VERSION = 'v1';

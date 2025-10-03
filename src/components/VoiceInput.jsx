@@ -363,7 +363,7 @@ export default function VoiceInput({ onTaskParsed }) {
         {isRecording && (
           <div
             className="absolute inset-0 rounded-lg border-2 border-white animate-ping opacity-75"
-            style={{ animation: 'pulse-ring 1.5s linear infinite' }}
+            style={{ animation: 'pulse-ring 1.5s linear infinite', pointerEvents: 'none' }}
           />
         )}
 

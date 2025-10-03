@@ -13,6 +13,7 @@
   --secondary-button-bg: var(--bg-tertiary);
   --secondary-button-text: var(--text-primary);
   --secondary-button-border: var(--border-primary);
+  --skeleton-bg: #e5e7eb;
 }
 
 :root.dark {
@@ -28,6 +29,7 @@
   --secondary-button-bg: var(--bg-tertiary);
   --secondary-button-text: var(--text-primary);
   --secondary-button-border: var(--border-primary);
+  --skeleton-bg: #4b5563;
 }
 
 * {

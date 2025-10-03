@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Eye, EyeOff, GripVertical, Pencil, SquareCheckBig } from 'lucide-react';
 import CrossIcon from './CrossIcon';
 import { useLanguage } from '../contexts/LanguageContext';
+import { TaskListSkeleton } from './Skeleton';
 import {
   DndContext,
   DragOverlay,
@@ -206,7 +207,7 @@ function SortableItem({
       {showCompletedControl && (
         <button
           type="button"
-          className="flex items-center gap-2 rounded px-2 py-1 text-xs min-[600px]:text-sm transition-colors border"
+          className="flex items-center gap-2 rounded px-2 py-1 text-xs min-[600px]:text-sm transition-colors border cursor-pointer"
           onClick={(event) => {
             event.stopPropagation();
             // Pass the original index (position in the full tasks array) instead of task object
@@ -235,7 +236,7 @@ function SortableItem({
 
       <button
         type="button"
-        className="p-1 rounded hover:bg-white/10 transition-colors"
+        className="p-1 rounded hover:bg-white/10 transition-colors cursor-pointer"
         aria-label={isExpanded ? labels.hideDetails : labels.showDetails}
         onClick={(event) => {
           event.stopPropagation();
@@ -373,7 +374,7 @@ function SortableItem({
           {showEditControl && (
             <button
               type="button"
-              className="flex items-center gap-2 px-3 py-1.5 rounded text-sm transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 rounded text-sm transition-colors cursor-pointer"
               style={{
                 backgroundColor: 'var(--bg-tertiary)',
                 color: 'var(--text-primary)',
@@ -420,6 +421,9 @@ export default function TaskList({
   selectedTaskId,
   onToggleComplete,
   onEditTask,
+  isLoading = false,
+  hasSessionChecked = false,
+  isAuthenticated = false,
 }) {
   const [activeId, setActiveId] = React.useState(null);
   const [internalExpandedId, setInternalExpandedId] = React.useState(null);
@@ -707,8 +711,17 @@ export default function TaskList({
         strategy={verticalListSortingStrategy}
       >
         <DroppableTasksContainer>
-          {displayItems.length === 0 ? (
-            // Show message when no active tasks
+          {isLoading ? (
+            // Show skeleton loading while data is being fetched
+            <TaskListSkeleton count={6} />
+          ) : !hasSessionChecked ? (
+            // Don't show anything until we've checked the session
+            null
+          ) : !isAuthenticated ? (
+            // User not authenticated - show nothing (login page will handle this)
+            null
+          ) : displayItems.length === 0 ? (
+            // Show message only after loading is complete and no tasks found
             <div 
               className="text-center py-8 text-sm"
               style={{ color: 'var(--text-secondary)' }}

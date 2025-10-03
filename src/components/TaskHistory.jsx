@@ -1,7 +1,9 @@
 import { Clock, CheckCircle, Calendar } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useDeviceDetection } from '../hooks/useDeviceDetection';
 import CrossIcon from './CrossIcon';
+import { TaskHistorySkeleton } from './Skeleton';
 
 // Mock data for completed tasks
 const mockTaskHistory = [
@@ -100,8 +102,9 @@ const normalizeHistoryTasks = (tasks) =>
         };
     });
 
-export const TaskHistory = ({ tasks = [], isOpen = false, onClose = () => {} }) => {
+export const TaskHistory = ({ tasks = [], isOpen = false, onClose = () => {}, isLoading = false }) => {
     const { t } = useLanguage();
+    const device = useDeviceDetection();
     const [selectedFilter, setSelectedFilter] = useState('all');
 
     // Format date for display
@@ -157,31 +160,23 @@ export const TaskHistory = ({ tasks = [], isOpen = false, onClose = () => {} }) 
         ['all', ...new Set(normalizedTasks.map((task) => task.category))]
     ), [normalizedTasks]);
 
-    if (!isOpen) return null;
-
     return (
         <>
-            {/* Backdrop */}
+            {/* History Drawer - Always rendered for animation */}
             <div 
-                className="fixed inset-0 z-[9998]"
-                style={{ 
-                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                    transition: 'background-color 0.6s ease-in-out'
-                }}
-                onClick={onClose}
-            />
-
-            {/* History Sidebar */}
-            <div 
-                className="fixed top-0 right-0 h-full w-96 z-[9999] shadow-2xl"
+                className="fixed top-0 h-full z-[10001] overflow-y-auto"
                 style={{ 
                     backgroundColor: 'var(--bg-secondary)',
-                    transform: 'translateX(0px)',
-                    transition: 'transform 0.6s ease-in-out'
+                    right: '0px',
+                    width: device.isMobile ? '100vw' : '640px',
+                    transform: isOpen ? 'translateX(0px)' : 'translateX(100%)',
+                    transition: 'transform 0.6s ease-in-out, box-shadow 0.6s ease-in-out',
+                    willChange: 'transform',
+                    boxShadow: isOpen ? '-8px 0 32px rgba(0, 0, 0, 0.15)' : 'none'
                 }}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'var(--border-primary)' }}>
+                <div className={`flex items-center justify-between border-b ${device.isMobile ? 'p-4' : 'p-6'}`} style={{ borderColor: 'var(--border-primary)' }}>
                     <div className="flex items-center gap-2">
                         <Clock size={24} style={{ color: 'var(--text-primary)' }} />
                         <h2 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -197,7 +192,7 @@ export const TaskHistory = ({ tasks = [], isOpen = false, onClose = () => {} }) 
                 </div>
 
                 {/* Filter Tabs */}
-                <div className="p-4 border-b" style={{ borderColor: 'var(--border-primary)' }}>
+                <div className={`border-b ${device.isMobile ? 'p-3' : 'p-4'}`} style={{ borderColor: 'var(--border-primary)' }}>
                     <div className="flex flex-wrap gap-2">
                         {categories.map((category) => (
                             <button
@@ -220,56 +215,60 @@ export const TaskHistory = ({ tasks = [], isOpen = false, onClose = () => {} }) 
                 </div>
 
                 {/* Task List */}
-                <div className="flex-1 overflow-y-auto p-4">
-                    <div className="space-y-3">
-                        {filteredTasks.map((task) => (
-                            <div 
-                                key={task.id}
-                                className="p-4 rounded-lg border transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                                style={{ 
-                                    backgroundColor: 'var(--bg-primary)',
-                                    borderColor: 'var(--border-primary)'
-                                }}
-                            >
-                                {/* Task Header */}
-                                <div className="flex items-start justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                    <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5" />
-                                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                                        {getCategoryIcon(task.category)} {task.category.charAt(0).toUpperCase() + task.category.slice(1)}
-                                    </span>
+                <div className={`flex-1 overflow-y-auto ${device.isMobile ? 'p-3' : 'p-4'}`}>
+                    {isLoading ? (
+                        <TaskHistorySkeleton count={8} />
+                    ) : (
+                        <div className="space-y-3">
+                            {filteredTasks.map((task) => (
+                                <div 
+                                    key={task.id}
+                                    className="p-4 rounded-lg border transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                                    style={{ 
+                                        backgroundColor: 'var(--bg-primary)',
+                                        borderColor: 'var(--border-primary)'
+                                    }}
+                                >
+                                    {/* Task Header */}
+                                    <div className="flex items-start justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                        <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5" />
+                                        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                                            {getCategoryIcon(task.category)} {task.category.charAt(0).toUpperCase() + task.category.slice(1)}
+                                        </span>
+                                        </div>
+                                        <div 
+                                            className="w-2 h-2 rounded-full flex-shrink-0"
+                                            style={{ backgroundColor: getPriorityColor(task.priority) }}
+                                            title={`${task.priority} priority`}
+                                        />
                                     </div>
-                                    <div 
-                                        className="w-2 h-2 rounded-full flex-shrink-0"
-                                        style={{ backgroundColor: getPriorityColor(task.priority) }}
-                                        title={`${task.priority} priority`}
-                                    />
+
+                                    {/* Task Text */}
+                                    <p className="text-sm mb-3 leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                                        {task.text}
+                                    </p>
+
+                                    {/* Completion Date */}
+                                    <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                        <Calendar size={12} />
+                                        <span>{t('completed')} {formatDate(task.completedAt)}</span>
+                                    </div>
                                 </div>
+                            ))}
 
-                                {/* Task Text */}
-                                <p className="text-sm mb-3 leading-relaxed" style={{ color: 'var(--text-primary)' }}>
-                                    {task.text}
-                                </p>
-
-                                {/* Completion Date */}
-                                <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                                    <Calendar size={12} />
-                                    <span>{t('completed')} {formatDate(task.completedAt)}</span>
+                            {filteredTasks.length === 0 && (
+                                <div className="text-center py-8" style={{ color: 'var(--text-secondary)' }}>
+                                    <Clock size={48} className="mx-auto mb-4 opacity-50" />
+                                    <p>{t('noCompletedTasks')}</p>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    {filteredTasks.length === 0 && (
-                        <div className="text-center py-8" style={{ color: 'var(--text-secondary)' }}>
-                            <Clock size={48} className="mx-auto mb-4 opacity-50" />
-                            <p>{t('noCompletedTasks')}</p>
+                            )}
                         </div>
                     )}
                 </div>
 
                 {/* Footer Stats */}
-                <div className="border-t p-4" style={{ borderColor: 'var(--border-primary)' }}>
+                <div className={`border-t ${device.isMobile ? 'p-3' : 'p-4'}`} style={{ borderColor: 'var(--border-primary)' }}>
                     <div className="text-center">
                         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                             {t('totalCompletedTasks')}: <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>

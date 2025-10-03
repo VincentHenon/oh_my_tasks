@@ -2,8 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { useLanguage } from '../contexts/LanguageContext'
+import { useLanguage } from '../../contexts/LanguageContext'
 import { useSession } from 'next-auth/react'
+import DashboardHeader from '../../components/DashboardHeader'
+import ThemeToggle from '../../components/ThemeToggle'
 
 const LANG_OPTIONS = [
   { value: 'en', label: 'English' },
@@ -121,9 +123,13 @@ export default function SettingsClient() {
   }))
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 py-8">
-      <h1 className="text-3xl font-light mb-2" style={{ color: 'var(--text-primary)' }}>{t('settingsTitle')}</h1>
-      <p className="text-sm mb-8" style={{ color: 'var(--text-secondary)' }}>{t('settingsDescription')}</p>
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      <DashboardHeader tasks={[]} />
+      
+      <main className="pt-20 p-8">
+        <div className="mx-auto w-full max-w-2xl">
+          <h1 className="text-4xl font-light mb-2 lowercase tracking-wider" style={{ color: 'var(--text-primary)' }}>{t('settingsTitle')}</h1>
+          <p className="text-sm mb-8" style={{ color: 'var(--text-secondary)' }}>{t('settingsDescription')}</p>
 
       <form className="space-y-8" onSubmit={handleSubmit}>
         <fieldset className="space-y-4">
@@ -216,6 +222,10 @@ export default function SettingsClient() {
           )}
         </div>
       </form>
+          
+          <ThemeToggle />
+        </div>
+      </main>
     </div>
   )
 }

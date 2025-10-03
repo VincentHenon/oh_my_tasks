@@ -24,7 +24,10 @@ export default function ThemeToggle() {
       onClick={toggleTheme}
       className="fixed bottom-4 right-4 p-2 transition-all duration-200 hover:scale-110"
       title={`Current theme: ${theme}`}
-      style={{ color: 'var(--text-primary)' }}
+      style={{ 
+        color: 'var(--text-primary)',
+        zIndex: 99999
+      }}
     >
       {getIcon()}
     </button>

@@ -371,7 +371,7 @@ export default function VoiceInput({ onTaskParsed }) {
           onClick={isRecording ? stopVoiceRecognition : startVoiceRecognition}
           disabled={isProcessing}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-            isProcessing ? 'opacity-60 cursor-not-allowed' : 'hover:opacity-80'
+            isProcessing ? 'opacity-60 cursor-not-allowed' : 'hover:opacity-80 cursor-pointer'
           }`}
           style={
             isRecording

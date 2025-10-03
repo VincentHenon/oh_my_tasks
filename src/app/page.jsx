@@ -1,5 +1,5 @@
 'use client';                     // ⚠️ obligatoire si on utilise useState
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import TaskList from '../components/TaskList';
 import ThemeToggle from '../components/ThemeToggle';
@@ -7,11 +7,12 @@ import { useLanguage } from '../contexts/LanguageContext';
 import DashboardHeader from '../components/DashboardHeader';
 import TaskForm from '../components/TaskForm';
 import TaskActionBar from '../components/TaskActionBar';
-import { fetchTasks as fetchRemoteTasks, createTask as createRemoteTask, updateTask as updateRemoteTask, deleteTask as deleteRemoteTask } from '../lib/tasksClient';
+
+const API_URL = '/api/tasks';
 
 export default function HomePage() {
     const { t } = useLanguage();
-    const { data: session, status } = useSession();
+    const { status } = useSession();
     const [taskName, setTaskName] = useState('');
     const [taskDetails, setTaskDetails] = useState('');
     const [taskDate, setTaskDate] = useState('');
@@ -19,6 +20,9 @@ export default function HomePage() {
     const [isFullDay, setIsFullDay] = useState(false);
     const [isUrgent, setIsUrgent] = useState(false);
     const [tasks, setTasks] = useState([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false);
+    const [hasSessionChecked, setHasSessionChecked] = useState(false); // Track if session has been verified
     const [showAddForm, setShowAddForm] = useState(false);
     const [formMode, setFormMode] = useState('add'); // 'add' | 'edit'
     const [editingTaskId, setEditingTaskId] = useState(null);
@@ -40,32 +44,58 @@ export default function HomePage() {
         setIsTagHintVisible(false);
     };
 
-    const loadTasksFromAPI = useCallback(async ({ useCache = true } = {}) => {
-        if (status !== 'authenticated' || !session?.user?.email) {
+    const loadTasksFromAPI = async () => {
+        if (status !== 'authenticated') {
             setTasks([]);
             return;
         }
 
         try {
-            const { tasks: fetchedTasks, source } = await fetchRemoteTasks({
-                email: session.user.email,
-                cache: useCache,
-            });
+            const res = await fetch(API_URL, { cache: 'no-store' });
+            if (!res.ok) throw new Error('Erreur API');
+            const data = await res.json();
 
-            console.log('[HomePage] tasks fetched from', source);
-            setTasks(fetchedTasks);
+            // Extract tasks array from API response
+            let tasksArray = [];
+            if (Array.isArray(data)) {
+                tasksArray = data;
+            } else if (data && Array.isArray(data.tasks)) {
+                tasksArray = data.tasks;
+            } else {
+                console.warn('Invalid API response format:', data);
+                setTasks([]);
+                return;
+            }
+
+            setTasks(tasksArray.map(task => ({
+                id: task.id,
+                name: task.title,
+                details: task.details || '',
+                date: task.date || '',
+                time: task.time || '',
+                isFullDay: task.isFullDay === 1 || task.isFullDay === true,
+                isUrgent: task.urgent === 1 || task.urgent === true,
+                completed: task.completed === 1 || task.completed === true,
+                createdAt: task.created_at || '',
+                tags: task.tags || '',
+                priority: task.priority || 'medium',
+            })));
         } catch (error) {
-            console.error("Erreur lors du chargement des tâches:", error);
+            console.error('Erreur lors du chargement des tâches:', error);
             setTasks([]);
+        } finally {
+            setIsLoading(false);
+            setHasInitiallyLoaded(true);
         }
-    }, [session?.user?.email, status]);
+    };
 
     const addTaskToAPI = async (newTask) => {
-        if (status !== 'authenticated' || !session?.user?.email) return;
+        if (status !== 'authenticated') return;
         try {
-            const createdTask = await createRemoteTask({
-                email: session.user.email,
-                task: {
+            const res = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
                     name: newTask.name,
                     details: newTask.details,
                     date: newTask.date,
@@ -75,23 +105,22 @@ export default function HomePage() {
                     completed: newTask.completed ?? false,
                     tags: newTask.tags ?? '',
                     priority: newTask.priority ?? 'medium',
-                },
+                })
             });
-
-            setTasks((prev) => [createdTask, ...prev]);
-            await loadTasksFromAPI({ useCache: false });
+            if (!res.ok) throw new Error('Erreur API');
+            await loadTasksFromAPI();
         } catch (error) {
-            console.error("Erreur lors de l'ajout de la tâche:", error);
+            console.error('Erreur lors de l\'ajout de la tâche:', error);
         }
     };
 
     const updateTaskInAPI = async (taskId, updatedFields) => {
-        if (status !== 'authenticated' || !session?.user?.email) return;
+        if (status !== 'authenticated') return;
 
         const body = {};
 
         if (updatedFields.name !== undefined) {
-            body.name = updatedFields.name;
+            body.title = updatedFields.name;
         }
         if (updatedFields.details !== undefined) {
             body.details = updatedFields.details;
@@ -103,13 +132,13 @@ export default function HomePage() {
             body.time = updatedFields.time;
         }
         if (updatedFields.isFullDay !== undefined) {
-            body.isFullDay = updatedFields.isFullDay;
+            body.isFullDay = updatedFields.isFullDay ? 1 : 0;
         }
         if (updatedFields.isUrgent !== undefined) {
-            body.isUrgent = updatedFields.isUrgent;
+            body.urgent = updatedFields.isUrgent ? 1 : 0;
         }
         if (updatedFields.completed !== undefined) {
-            body.completed = updatedFields.completed;
+            body.completed = updatedFields.completed ? 1 : 0;
         }
         if (updatedFields.tags !== undefined) {
             body.tags = updatedFields.tags;
@@ -119,40 +148,44 @@ export default function HomePage() {
         }
 
         try {
-            const updatedTask = await updateRemoteTask({
-                email: session.user.email,
-                id: taskId,
-                updates: body,
+            const res = await fetch(`${API_URL}?id=${taskId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
             });
-
-            setTasks((prev) => prev.map((task) => (task.id === updatedTask.id ? updatedTask : task)));
-            await loadTasksFromAPI({ useCache: false });
+            if (!res.ok) throw new Error('Erreur API');
+            await loadTasksFromAPI();
         } catch (error) {
-            console.error("Erreur lors de la mise à jour de la tâche:", error);
+            console.error('Erreur lors de la mise à jour de la tâche:', error);
         }
     };
 
     const deleteTaskFromAPI = async (taskId) => {
-        if (status !== 'authenticated' || !session?.user?.email) return;
+        if (status !== 'authenticated') return;
         try {
-            await deleteRemoteTask({
-                email: session.user.email,
-                id: String(taskId),
-            });
-            setTasks((prev) => prev.filter((task) => task.id !== taskId));
-            await loadTasksFromAPI({ useCache: false });
+            const res = await fetch(`${API_URL}?id=${taskId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Erreur API');
+            await loadTasksFromAPI();
         } catch (error) {
-            console.error("Erreur lors de la suppression de la tâche:", error);
+            console.error('Erreur lors de la suppression de la tâche:', error);
         }
     };
 
     useEffect(() => {
-        loadTasksFromAPI({ useCache: true });
+        if (status === 'authenticated') {
+            setHasSessionChecked(true);
+            setIsLoading(true);
+            loadTasksFromAPI();
+        }
 
         if (status === 'unauthenticated') {
+            setHasSessionChecked(true);
             setTasks([]);
+            setIsLoading(false);
+            setHasInitiallyLoaded(false);
         }
-    }, [status, session?.user?.email, loadTasksFromAPI]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [status]);
 
     const updateTasks = (newTasks) => {
         setTasks(newTasks);
@@ -161,10 +194,10 @@ export default function HomePage() {
     const handleNameChange = (e) => setTaskName(e.target.value);
     const handleDetailsChange = (e) => setTaskDetails(e.target.value);
     const handleTagsChange = (e) => setTaskTags(e.target.value);
-    const handleToggleTagHint = () => setIsTagHintVisible((prev) => !prev);
     const handlePriorityChange = (e) => setTaskPriority(e.target.value);
     const handleDateChange = (e) => setTaskDate(e.target.value);
     const handleTimeChange = (e) => setTaskTime(e.target.value);
+    const handleToggleTagHint = () => setIsTagHintVisible((prev) => !prev);
 
     const openNativePicker = (event) => {
         const target = event?.target;
@@ -344,6 +377,9 @@ export default function HomePage() {
                     onDeleteTask={deleteTask}
                     onToggleCompleted={handleToggleCompleted}
                     onEditTask={handleEditTask}
+                    isLoading={isLoading && status === 'authenticated'}
+                    hasSessionChecked={hasSessionChecked}
+                    isAuthenticated={status === 'authenticated'}
                 />
 
                 {!showAddForm && (

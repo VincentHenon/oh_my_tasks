@@ -112,7 +112,8 @@ async function getUserOverdueTasks(userEmail) {
     const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/tasks?email=${userEmail}&completed=false`, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.CRON_SECRET}`
       }
     });
     

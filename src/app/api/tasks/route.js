@@ -23,7 +23,21 @@ const ensureConfig = () => {
   console.log('✅ Configuration OK')
 }
 
-const withAuthorization = async () => {
+const withAuthorization = async (request = null) => {
+  // Vérifier si c'est un appel cron avec email explicite
+  if (request) {
+    const cronSecret = request.headers.get('Authorization')?.replace('Bearer ', '')
+    if (cronSecret === process.env.CRON_SECRET) {
+      const url = new URL(request.url)
+      const email = url.searchParams.get('email')
+      if (email) {
+        console.log('🤖 Cron access granted for:', email)
+        return email
+      }
+    }
+  }
+  
+  // Authentification normale via NextAuth
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
     return null
@@ -64,11 +78,11 @@ const fetchWithIPv6Fallback = async (url, options = {}) => {
   }
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
     console.log('🚀 Starting GET /api/tasks')
     ensureConfig()
-    const email = await withAuthorization()
+    const email = await withAuthorization(request)
     console.log('👤 User email:', email ? 'SET' : 'MISSING')
 
     if (!email) {

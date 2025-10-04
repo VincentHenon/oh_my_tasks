@@ -37,8 +37,9 @@ export async function POST(request) {
           const shouldSend = shouldSendDailyNotification(todayTasks);
           
           if (shouldSend) {
-            // Vérifier qu'on n'a pas déjà envoyé aujourd'hui
-            const alreadySent = await hasNotificationBeenSentToday(user.email, 'daily');
+            // MODE TEST: Désactiver la protection anti-spam
+            console.log('🧪 MODE TEST: Bypass de la protection anti-spam');
+            const alreadySent = false; // Forcer false pour les tests
             
             if (!alreadySent) {
               const result = await emailService.sendDailyReminder(user, todayTasks);
@@ -80,8 +81,15 @@ export async function POST(request) {
 
 /**
  * Détermine si on doit envoyer la notification maintenant
+ * MODE TEST : Envoie TOUJOURS pour les tests
  */
 function shouldSendDailyNotification(tasks) {
+  console.log('🧪 MODE TEST: Forçage de l\'envoi pour tests');
+  
+  // MODE TEST: Toujours retourner true s'il y a des tâches
+  return tasks && tasks.length > 0;
+  
+  /* LOGIQUE NORMALE (commentée pour les tests) :
   const now = new Date();
   const currentHour = now.getHours();
   const currentMinutes = now.getMinutes();
@@ -104,6 +112,7 @@ function shouldSendDailyNotification(tasks) {
     // Toutes les tâches sont "toute la journée" -> envoyer à 8h
     return currentHour === 8 && currentMinutes <= 15;
   }
+  */
 }
 
 /**

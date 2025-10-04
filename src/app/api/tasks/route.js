@@ -45,6 +45,25 @@ const toJsonSafe = async (response) => {
   }
 }
 
+// Fonction helper pour gérer les requêtes avec fallback IPv6
+const fetchWithIPv6Fallback = async (url, options = {}) => {
+  try {
+    const response = await fetch(url, options)
+    console.log('📡 Response status:', response.status)
+    return response
+  } catch (fetchError) {
+    console.log('⚠️ Domaine fetch failed, trying IPv6 directly...', fetchError.message)
+    
+    // Fallback: utiliser l'IPv6 directement
+    const ipv6Url = url.toString().replace('ohmytasks.vincenthenon.com', '[2a02:4780:27:1149:0:7a5:24c6:4]')
+    console.log('🌐 Fallback IPv6:', ipv6Url)
+    
+    const response = await fetch(ipv6Url, options)
+    console.log('📡 IPv6 Response status:', response.status)
+    return response
+  }
+}
+
 export async function GET() {
   try {
     console.log('🚀 Starting GET /api/tasks')
@@ -61,13 +80,11 @@ export async function GET() {
     url.searchParams.set('email', email)
     console.log('🌐 Calling:', url.toString())
 
-    const remoteResponse = await fetch(url, {
+    const remoteResponse = await fetchWithIPv6Fallback(url, {
       method: 'GET',
       headers: forwardHeaders(),
       cache: 'no-store',
     })
-    
-    console.log('📡 Response status:', remoteResponse.status)
 
     const payload = await toJsonSafe(remoteResponse)
 
@@ -126,7 +143,7 @@ export async function POST(request) {
 
     const body = await request.json()
 
-    const remoteResponse = await fetch(REMOTE_TASKS_ENDPOINT, {
+    const remoteResponse = await fetchWithIPv6Fallback(REMOTE_TASKS_ENDPOINT, {
       method: 'POST',
       headers: forwardHeaders(),
       body: JSON.stringify({
@@ -176,7 +193,7 @@ export async function PUT(request) {
 
     const body = await request.json()
 
-    const remoteResponse = await fetch(`${REMOTE_TASKS_ENDPOINT}?id=${id}`, {
+    const remoteResponse = await fetchWithIPv6Fallback(`${REMOTE_TASKS_ENDPOINT}?id=${id}`, {
       method: 'PUT',
       headers: forwardHeaders(),
       body: JSON.stringify({
@@ -222,7 +239,7 @@ export async function DELETE(request) {
     url.searchParams.set('id', id)
     url.searchParams.set('email', email)
 
-    const remoteResponse = await fetch(url, {
+    const remoteResponse = await fetchWithIPv6Fallback(url, {
       method: 'DELETE',
       headers: forwardHeaders(),
     })

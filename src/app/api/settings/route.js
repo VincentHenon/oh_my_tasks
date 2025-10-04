@@ -5,6 +5,23 @@ import { authOptions } from '../auth/[...nextauth]/route'
 const SETTINGS_ENDPOINT = process.env.USER_SETTINGS_API_ENDPOINT
 const SETTINGS_API_KEY = process.env.USER_SETTINGS_API_KEY ?? process.env.EXPECTED_KEY ?? ''
 
+// Fonction helper pour gérer les requêtes avec fallback IPv6
+const fetchWithIPv6Fallback = async (url, options = {}) => {
+  try {
+    const response = await fetch(url, options)
+    return response
+  } catch (fetchError) {
+    console.log('⚠️ Settings API: Domaine fetch failed, trying IPv6 directly...', fetchError.message)
+    
+    // Fallback: utiliser l'IPv6 directement
+    const ipv6Url = url.toString().replace('ohmytasks.vincenthenon.com', '[2a02:4780:27:1149:0:7a5:24c6:4]')
+    console.log('🌐 Settings API Fallback IPv6:', ipv6Url)
+    
+    const response = await fetch(ipv6Url, options)
+    return response
+  }
+}
+
 const DEFAULT_SETTINGS = {
   language: 'en',
   notifyUpcoming: false,
@@ -53,7 +70,7 @@ export async function GET() {
   const url = `${SETTINGS_ENDPOINT}?email=${encodeURIComponent(session.user.email)}`
 
   try {
-    const upstream = await fetch(url, {
+    const upstream = await fetchWithIPv6Fallback(url, {
       method: 'GET',
       headers: buildHeaders(),
       cache: 'no-store',
@@ -99,7 +116,7 @@ export async function PUT(request) {
   }
 
   try {
-    const upstream = await fetch(SETTINGS_ENDPOINT, {
+    const upstream = await fetchWithIPv6Fallback(SETTINGS_ENDPOINT, {
       method: 'PUT',
       headers: buildHeaders(),
       body: JSON.stringify(payload),

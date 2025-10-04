@@ -2,12 +2,12 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../auth/[...nextauth]/route'
 
-const REMOTE_TASKS_ENDPOINT = process.env.TASKS_API_BASE_URL
+const REMOTE_TASKS_ENDPOINT = process.env.TASKS_API_ENDPOINT
 const REMOTE_API_KEY = process.env.TASKS_API_KEY
 
 const ensureConfig = () => {
   if (!REMOTE_TASKS_ENDPOINT) {
-    throw new Error('TASKS_API_BASE_URL is not configured')
+    throw new Error('TASKS_API_ENDPOINT is not configured')
   }
 
   if (!REMOTE_API_KEY) {

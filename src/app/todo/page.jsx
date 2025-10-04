@@ -49,8 +49,8 @@ export default function TodoPage() {
         console.log('API Error:', apiError);
         console.log('Has attempted fetch:', hasAttemptedFetch);
         console.log('Environment variables:');
-        const endpointEnv = process.env.NEXT_PUBLIC_TASKS_API_ENDPOINT ?? process.env.TASKS_API_ENDPOINT;
-        const apiKeyEnv = process.env.NEXT_PUBLIC_TASKS_API_KEY ?? process.env.TASKS_API_KEY;
+        const endpointEnv = process.env.TASKS_API_ENDPOINT;
+        const apiKeyEnv = process.env.TASKS_API_KEY;
         console.log('- API Endpoint:', endpointEnv);
         console.log('- API Key (first 10 chars):', apiKeyEnv ? apiKeyEnv.substring(0, 10) + '...' : '');
         console.log('=====================================');

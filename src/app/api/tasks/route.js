@@ -6,13 +6,21 @@ const REMOTE_TASKS_ENDPOINT = process.env.TASKS_API_ENDPOINT
 const REMOTE_API_KEY = process.env.TASKS_API_KEY
 
 const ensureConfig = () => {
+  console.log('🔧 Environment variables check:')
+  console.log('- TASKS_API_ENDPOINT:', REMOTE_TASKS_ENDPOINT ? 'SET' : 'MISSING')
+  console.log('- TASKS_API_KEY:', REMOTE_API_KEY ? 'SET' : 'MISSING')
+  
   if (!REMOTE_TASKS_ENDPOINT) {
+    console.error('❌ TASKS_API_ENDPOINT is not configured')
     throw new Error('TASKS_API_ENDPOINT is not configured')
   }
 
   if (!REMOTE_API_KEY) {
+    console.error('❌ TASKS_API_KEY is not configured')
     throw new Error('TASKS_API_KEY is not configured')
   }
+  
+  console.log('✅ Configuration OK')
 }
 
 const withAuthorization = async () => {
@@ -39,21 +47,27 @@ const toJsonSafe = async (response) => {
 
 export async function GET() {
   try {
+    console.log('🚀 Starting GET /api/tasks')
     ensureConfig()
     const email = await withAuthorization()
+    console.log('👤 User email:', email ? 'SET' : 'MISSING')
 
     if (!email) {
+      console.log('❌ Unauthorized - no email')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const url = new URL(REMOTE_TASKS_ENDPOINT)
     url.searchParams.set('email', email)
+    console.log('🌐 Calling:', url.toString())
 
     const remoteResponse = await fetch(url, {
       method: 'GET',
       headers: forwardHeaders(),
       cache: 'no-store',
     })
+    
+    console.log('📡 Response status:', remoteResponse.status)
 
     const payload = await toJsonSafe(remoteResponse)
 
@@ -91,8 +105,13 @@ export async function GET() {
 
     return NextResponse.json(payload)
   } catch (error) {
-    console.error('[TASKS_API][GET]', error)
-    return NextResponse.json({ error: 'Failed to load tasks' }, { status: 500 })
+    console.error('💥 [TASKS_API][GET] Error:', error.message)
+    console.error('💥 Stack:', error.stack)
+    return NextResponse.json({ 
+      error: 'Failed to load tasks', 
+      message: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    }, { status: 500 })
   }
 }
 

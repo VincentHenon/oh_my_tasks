@@ -1,6 +1,28 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '../auth/[...nextauth]/route'
+import { authOptions }    // Adapter selon le format de réponse de ton API PHP
+    let tasksArray = payload
+    if (payload && payload.tasks && Array.isArray(payload.tasks)) {
+      tasksArray = payload.tasks
+    } else if (!Array.isArray(payload)) {
+      console.warn('[TASKS_API][GET] Unexpected payload format:', payload)
+      tasksArray = []
+    }
+
+    const normalized = tasksArray.map((item) => {
+      if (item && typeof item === 'object') {
+        const { detail, ...rest } = item
+        return {
+          ...rest,
+          details: item?.details ?? detail ?? '',
+          tags: item?.tags ?? '',
+          priority: item?.priority ?? 'medium',
+        }
+      }
+      return item
+    })
+    
+    return NextResponse.json(normalized)..nextauth]/route'
 
 const REMOTE_TASKS_ENDPOINT = process.env.TASKS_API_ENDPOINT
 const REMOTE_API_KEY = process.env.TASKS_API_KEY
